@@ -1,0 +1,6 @@
+{
+  "alias": ["client-vikas-kendres-projects.vercel.app"],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

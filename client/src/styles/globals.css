@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Prevent overscroll / bounce on mobile */
+html, body {
+  overscroll-behavior: none;
+  height: 100%;
+  background-color: #0F0F0F;
+}
+
+/* Leaflet dark map fix */
+.leaflet-container {
+  background: #0F0F0F !important;
+}
+
+/* Hide default Leaflet attribution for cleaner UI */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.4;
+}
+
+/* Glove-friendly: minimum tap target 48px */
+button {
+  min-width: 48px;
+  min-height: 48px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent text selection during hold gestures */
+* {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}

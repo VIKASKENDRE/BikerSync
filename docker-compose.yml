@@ -1,0 +1,28 @@
+version: '3.9'
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: bikersync-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+
+  server:
+    build: ./server
+    container_name: bikersync-server
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      - PORT=4000
+      - MONGODB_URI=mongodb://mongo:27017/bikersync
+      - CLIENT_URL=http://localhost:5173
+      - JWT_SECRET=change_in_production
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

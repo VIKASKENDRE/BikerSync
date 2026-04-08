@@ -1,0 +1,53 @@
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+const mongoose = require('mongoose');
+
+const locationHandler = require('./sockets/locationHandler');
+const chatHandler = require('./sockets/chatHandler');
+const voiceHandler = require('./sockets/voiceHandler');
+
+const app = express();
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: { origin: process.env.CLIENT_URL, methods: ['GET', 'POST'] },
+  transports: ['websocket'],
+  pingTimeout: 20000,
+  pingInterval: 10000,
+});
+
+app.use(cors({ origin: process.env.CLIENT_URL }));
+app.use(express.json());
+
+app.use('/api/rides', require('./routes/rides'));
+app.use('/api/sos',   require('./routes/sos'));
+app.use('/api/admin', require('./routes/admin'));
+
+app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+
+io.on('connection', (socket) => {
+  console.log(`[Socket] Connected: ${socket.id}`);
+  locationHandler(io, socket);
+  chatHandler(io, socket);
+  voiceHandler(io, socket);
+  socket.on('disconnect', () => console.log(`[Socket] Disconnected: ${socket.id}`));
+});
+
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log('[DB] MongoDB connected');
+    server.listen(process.env.PORT || 4000, () =>
+      console.log(`[Server] BikerSync running on :${process.env.PORT || 4000}`)
+    );
+  })
+  .catch((err) => {
+    console.error('[DB] Connection failed:', err.message);
+    console.log('[Server] Starting without DB (limited functionality)');
+    server.listen(process.env.PORT || 4000, () =>
+      console.log(`[Server] BikerSync running on :${process.env.PORT || 4000}`)
+    );
+  });
