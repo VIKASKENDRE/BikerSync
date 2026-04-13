@@ -3,17 +3,28 @@ import { useSocket } from '../../hooks/useSocket';
 import { useRideContext } from '../../context/RideContext';
 import { webrtcMesh } from '../../services/webrtcMesh';
 
-const ROLE_COLORS = { lead: 'text-neon-yellow', sweep: 'text-neon-orange', rider: 'text-gray-300' };
+const ROLE_COLORS = {
+  lead:  'text-[#FFE500]',
+  sweep: 'text-[#FF6B00]',
+  rider: 'text-gray-400',
+};
 
 export default function GroupChat({ onClose }) {
   const { socket } = useSocket();
   const { state, dispatch } = useRideContext();
   const [text, setText] = useState('');
   const bottomRef = useRef(null);
+  const inputRef  = useRef(null);
+  const selfId = state.selfRider?.riderId;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.messages]);
+
+  // Focus input when drawer opens
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, []);
 
   const send = () => {
     const trimmed = text.trim();
@@ -25,10 +36,9 @@ export default function GroupChat({ onClose }) {
         role: state.selfRider?.role,
       });
     } else {
-      // P2P mode — build message locally, show in own chat, broadcast to peers
       const message = {
-        id: `${state.selfRider?.riderId}-${Date.now()}`,
-        riderId:     state.selfRider?.riderId,
+        id: `${selfId}-${Date.now()}`,
+        riderId:     selfId,
         displayName: state.selfRider?.displayName,
         role:        state.selfRider?.role,
         text:        trimmed.slice(0, 300),
@@ -40,52 +50,76 @@ export default function GroupChat({ onClose }) {
     setText('');
   };
 
-  const onKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  };
-
   return (
-    <div className="bg-surface-2 border border-surface-3 rounded-2xl overflow-hidden flex flex-col h-64">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-surface-3">
-        <span className="text-sm font-bold text-white">Group Chat</span>
-        <button onClick={onClose} className="text-gray-400 text-lg leading-none min-w-0 min-h-0 w-8 h-8">✕</button>
+    <div className="flex flex-col bg-[#111111] rounded-t-3xl border-t border-x border-[#2A2A2A] overflow-hidden"
+         style={{ maxHeight: '72dvh' }}>
+
+      {/* Handle + header */}
+      <div className="flex-shrink-0">
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="w-10 h-1 bg-[#3A3A3A] rounded-full" />
+        </div>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#2A2A2A]">
+          <span className="text-white font-bold text-sm">Group Chat</span>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 rounded-full
+                       bg-[#2A2A2A] active:scale-90 transition-transform"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 overscroll-contain">
         {state.messages.length === 0 && (
-          <p className="text-gray-600 text-xs text-center mt-4">No messages yet</p>
+          <p className="text-gray-600 text-xs text-center py-8">
+            No messages yet — say hi! 👋
+          </p>
         )}
-        {state.messages.map((msg) => (
-          <div key={msg.id} className="flex flex-col">
-            <span className={`text-xs font-bold ${ROLE_COLORS[msg.role] ?? 'text-gray-300'}`}>
-              {msg.displayName}
-            </span>
-            <span className="text-sm text-white">{msg.text}</span>
-          </div>
-        ))}
+        {state.messages.map((msg) => {
+          const isSelf = msg.riderId === selfId;
+          return (
+            <div key={msg.id} className={`flex flex-col ${isSelf ? 'items-end' : 'items-start'}`}>
+              <span className={`text-[11px] font-semibold mb-0.5 px-1
+                ${isSelf ? 'text-[#FFE500]' : (ROLE_COLORS[msg.role] ?? 'text-gray-400')}`}>
+                {isSelf ? 'You' : msg.displayName}
+              </span>
+              <div className={`max-w-[78%] px-3.5 py-2 rounded-2xl text-sm leading-snug
+                ${isSelf
+                  ? 'bg-[#FFE500] text-black rounded-br-md font-medium'
+                  : 'bg-[#2A2A2A] text-white rounded-bl-md'}`}>
+                {msg.text}
+              </div>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <div className="flex gap-2 px-3 py-2 border-t border-surface-3">
+      <div className="flex-shrink-0 flex gap-2 px-3 py-3 border-t border-[#2A2A2A]">
         <input
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="Type a message..."
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          placeholder="Message the group…"
           maxLength={300}
-          className="flex-1 bg-surface-3 text-white text-sm rounded-xl px-3 py-2
-                     border border-transparent focus:border-neon-yellow/40 outline-none
+          className="flex-1 bg-[#2A2A2A] text-white rounded-2xl px-4 py-2.5
+                     border border-transparent focus:border-[#FFE500]/40 outline-none
                      placeholder:text-gray-600"
+          style={{ fontSize: 16 }} // prevent iOS zoom
         />
         <button
           onClick={send}
-          className="px-4 py-2 bg-neon-yellow text-black font-bold text-sm rounded-xl
-                     active:scale-95 transition-transform min-w-0 min-h-0 h-10"
+          disabled={!text.trim()}
+          className="w-11 h-11 flex items-center justify-center rounded-full
+                     bg-[#FFE500] text-black font-black text-lg shrink-0
+                     active:scale-90 transition-transform disabled:opacity-30"
         >
-          Send
+          ↑
         </button>
       </div>
     </div>

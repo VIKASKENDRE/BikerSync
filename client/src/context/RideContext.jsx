@@ -11,12 +11,14 @@ function loadSession() {
 const persisted = loadSession();
 
 const initialState = {
-  rideId:     persisted?.rideId    ?? null,
-  selfRider:  persisted?.selfRider ?? null,
-  riders: [],
-  messages: [],
+  rideId:      persisted?.rideId    ?? null,
+  selfRider:   persisted?.selfRider ?? null,
+  riders:      [],
+  messages:    [],
   unreadCount: 0,
-  sosAlert: null,
+  sosAlert:    null,
+  sharedRoute: null,   // route shared by lead, visible to all riders
+  trails:      {},     // { riderId: [[lat,lng], ...] } — last 50 positions
 };
 
 function reducer(state, action) {
@@ -37,14 +39,18 @@ function reducer(state, action) {
     }
 
     case 'RIDER_MOVED': {
+      const { riderId, lat, lng } = action.update;
       const updated = state.riders.map((r) =>
-        r.riderId === action.update.riderId ? { ...r, ...action.update } : r
+        r.riderId === riderId ? { ...r, ...action.update } : r
       );
       const selfUpdated =
-        state.selfRider?.riderId === action.update.riderId
+        state.selfRider?.riderId === riderId
           ? { ...state.selfRider, ...action.update }
           : state.selfRider;
-      return { ...state, riders: updated, selfRider: selfUpdated };
+      const trails = lat != null
+        ? { ...state.trails, [riderId]: [...(state.trails[riderId] ?? []), [lat, lng]].slice(-50) }
+        : state.trails;
+      return { ...state, riders: updated, selfRider: selfUpdated, trails };
     }
 
     case 'RIDER_OFFLINE':
@@ -55,14 +61,19 @@ function reducer(state, action) {
         ),
       };
 
-    case 'SELF_MOVED':
+    case 'SELF_MOVED': {
+      const selfId = state.selfRider?.riderId;
+      const { lat, lng } = action.update;
+      const trails = selfId && lat != null
+        ? { ...state.trails, [selfId]: [...(state.trails[selfId] ?? []), [lat, lng]].slice(-50) }
+        : state.trails;
       return {
         ...state,
         selfRider: { ...state.selfRider, ...action.update },
-        riders: state.riders.map((r) =>
-          r.riderId === state.selfRider?.riderId ? { ...r, ...action.update } : r
-        ),
+        riders: state.riders.map((r) => r.riderId === selfId ? { ...r, ...action.update } : r),
+        trails,
       };
+    }
 
     case 'CHAT_MESSAGE': {
       if (state.messages.some((m) => m.id === action.message.id)) return state;
@@ -85,9 +96,32 @@ function reducer(state, action) {
     case 'SOS_RESOLVED':
       return { ...state, sosAlert: null };
 
+    case 'ROLE_CHANGED': {
+      const { riderId, role } = action;
+      const updatedSelf =
+        state.selfRider?.riderId === riderId
+          ? { ...state.selfRider, role }
+          : state.selfRider;
+      // Persist new self role so page refresh keeps the correct role
+      if (state.selfRider?.riderId === riderId) {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY)) ?? {};
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...saved, selfRider: updatedSelf }));
+        } catch {}
+      }
+      return {
+        ...state,
+        selfRider: updatedSelf,
+        riders: state.riders.map((r) => r.riderId === riderId ? { ...r, role } : r),
+      };
+    }
+
+    case 'SET_SHARED_ROUTE':
+      return { ...state, sharedRoute: action.route };
+
     case 'LEAVE_RIDE':
       sessionStorage.removeItem(SESSION_KEY);
-      return { rideId: null, selfRider: null, riders: [], messages: [], unreadCount: 0, sosAlert: null };
+      return { rideId: null, selfRider: null, riders: [], messages: [], unreadCount: 0, sosAlert: null, sharedRoute: null, trails: {} };
 
     default:
       return state;

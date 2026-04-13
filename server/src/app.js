@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -22,9 +24,17 @@ const io = new Server(server, {
 app.use(cors({ origin: process.env.CLIENT_URL }));
 app.use(express.json());
 
-app.use('/api/rides', require('./routes/rides'));
-app.use('/api/sos',   require('./routes/sos'));
-app.use('/api/admin', require('./routes/admin'));
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
+
+app.use('/api/rides',     require('./routes/rides'));
+app.use('/api/sos',       require('./routes/sos'));
+app.use('/api/admin',     require('./routes/admin'));
+app.use('/api/geocode',   require('./routes/geocode'));
+app.use('/api/maps',      require('./routes/mapsProxy'));
+app.use('/api/social',    require('./routes/social'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 

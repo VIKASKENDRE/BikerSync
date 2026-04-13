@@ -1,6 +1,7 @@
-const admin   = require('../services/firebaseAdmin');
+const admin    = require('../services/firebaseAdmin');
 const Ride     = require('../models/Ride');
 const SOSEvent = require('../models/SOSEvent');
+const ApiUsage = require('../models/ApiUsage');
 const { checkAdmin } = require('../middleware/adminAuth');
 
 // GET /api/admin/me — verify token and return admin status
@@ -97,4 +98,25 @@ async function resetData(req, res) {
   }
 }
 
-module.exports = { getMe, getStats, getRides, deleteRide, getUsers, deleteUser, resetData };
+// GET /api/admin/api-usage  — last 6 months of Maps API usage
+async function getApiUsage(req, res) {
+  try {
+    const records = await ApiUsage.find().sort({ month: -1 }).limit(6);
+    res.json(records);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// POST /api/admin/api-usage/reset-fallback  — manually clear fallback mode
+async function resetFallback(req, res) {
+  try {
+    const { month } = req.body;
+    await ApiUsage.updateOne({ month }, { fallbackMode: false });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getMe, getStats, getRides, deleteRide, getUsers, deleteUser, resetData, getApiUsage, resetFallback };

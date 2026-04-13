@@ -6,12 +6,13 @@ export default function Admin() {
   const navigate = useNavigate();
   const { isAdmin, loading, adminFetch } = useAdmin();
 
-  const [tab,    setTab]    = useState('rides');   // 'rides' | 'users' | 'reset'
-  const [rides,  setRides]  = useState([]);
-  const [users,  setUsers]  = useState([]);
-  const [stats,  setStats]  = useState(null);
-  const [busy,   setBusy]   = useState(false);
-  const [msg,    setMsg]    = useState('');
+  const [tab,      setTab]      = useState('rides');
+  const [rides,    setRides]    = useState([]);
+  const [users,    setUsers]    = useState([]);
+  const [stats,    setStats]    = useState(null);
+  const [apiUsage, setApiUsage] = useState([]);
+  const [busy,     setBusy]     = useState(false);
+  const [msg,      setMsg]      = useState('');
 
   useEffect(() => {
     if (!loading && !isAdmin) navigate('/', { replace: true });
@@ -22,6 +23,7 @@ export default function Admin() {
     adminFetch('/api/admin/stats').then(setStats).catch(() => {});
     adminFetch('/api/admin/rides').then(setRides).catch(() => {});
     adminFetch('/api/admin/users').then(setUsers).catch(() => {});
+    adminFetch('/api/admin/api-usage').then(setApiUsage).catch(() => {});
   }, [isAdmin]);
 
   const flash = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -108,11 +110,11 @@ export default function Admin() {
 
       {/* Tabs */}
       <div className="flex border-b border-[#2A2A2A] px-6">
-        {['rides', 'users', 'reset'].map((t) => (
+        {['rides', 'users', 'api', 'reset'].map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`py-3 px-4 text-sm font-bold capitalize transition-colors mr-2
               ${tab === t ? 'text-[#FFE500] border-b-2 border-[#FFE500]' : 'text-gray-400'}`}>
-            {t === 'reset' ? '⚠ Reset' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'reset' ? '⚠ Reset' : t === 'api' ? '📡 API Usage' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -206,6 +208,77 @@ export default function Admin() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* API USAGE TAB */}
+        {tab === 'api' && (
+          <div className="space-y-4 max-w-2xl">
+            <p className="text-gray-500 text-sm">
+              All Google Maps API calls are proxied through the server and tracked here.
+              When estimated cost reaches <span className="text-[#FFE500] font-bold">$190</span>,
+              the proxy automatically switches to free OSM/OSRM fallbacks for the rest of the month.
+            </p>
+            {apiUsage.length === 0 && (
+              <p className="text-gray-600 text-sm">No usage recorded yet.</p>
+            )}
+            {apiUsage.map((u) => {
+              const pct     = Math.min((u.estimatedCost / 200) * 100, 100);
+              const barColor = pct >= 95 ? 'bg-red-500' : pct >= 75 ? 'bg-yellow-500' : 'bg-green-500';
+              return (
+                <div key={u.month} className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-white font-bold">{u.month}</p>
+                      <p className="text-gray-500 text-xs">
+                        {u.fallbackMode
+                          ? <span className="text-yellow-400 font-bold">⚠ Fallback mode active (OSM/OSRM)</span>
+                          : <span className="text-green-400">✓ Google APIs active</span>}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[#FFE500] font-black text-lg">${u.estimatedCost.toFixed(3)}</p>
+                      <p className="text-gray-500 text-xs">of $200 free credit</p>
+                    </div>
+                  </div>
+
+                  {/* Budget bar */}
+                  <div className="w-full h-2 bg-[#2A2A2A] rounded-full mb-4 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+
+                  {/* Per-API breakdown */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { key: 'autocomplete', label: 'Autocomplete', rate: '$2.83/1k' },
+                      { key: 'details',      label: 'Place Details', rate: '$17/1k' },
+                      { key: 'directions',   label: 'Directions',    rate: '$5/1k' },
+                    ].map(({ key, label, rate }) => (
+                      <div key={key} className="bg-[#0F0F0F] rounded-xl p-3 text-center">
+                        <p className="text-white font-bold text-lg">{u[key] ?? 0}</p>
+                        <p className="text-gray-400 text-xs">{label}</p>
+                        <p className="text-gray-600 text-xs">{rate}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Reset fallback button */}
+                  {u.fallbackMode && (
+                    <button
+                      onClick={async () => {
+                        await adminFetch('/api/admin/api-usage/reset-fallback', { method: 'POST', body: { month: u.month } });
+                        setApiUsage((prev) => prev.map((r) => r.month === u.month ? { ...r, fallbackMode: false } : r));
+                        flash('Fallback mode cleared — Google APIs re-enabled');
+                      }}
+                      className="mt-3 w-full py-2 rounded-xl bg-[#2A2A2A] text-yellow-400 font-bold text-sm
+                                 active:scale-95 transition-transform"
+                    >
+                      Re-enable Google APIs for {u.month}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

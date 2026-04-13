@@ -68,6 +68,34 @@ module.exports = (io, socket) => {
     socket.to(rideId).emit('rider:moved', update);
   });
 
+  // Lead manually assigns another rider as the new lead
+  socket.on('role:assign', ({ targetRiderId }) => {
+    const { rideId, riderId, role } = socket.data ?? {};
+    if (!rideId || role !== 'lead') return;
+
+    const room = rideRooms.get(rideId);
+    if (!room || !room.has(targetRiderId)) return;
+
+    // Demote current lead → rider
+    room.get(riderId).role = 'rider';
+    socket.data.role = 'rider';
+
+    // Promote target → lead
+    room.get(targetRiderId).role = 'lead';
+
+    io.to(rideId).emit('role:changed', { riderId, role: 'rider' });
+    io.to(rideId).emit('role:changed', { riderId: targetRiderId, role: 'lead' });
+    console.log(`[Ride ${rideId}] Lead transferred: ${riderId} → ${targetRiderId}`);
+  });
+
+  // Lead shares the planned route with all riders in the room
+  socket.on('route:share', (payload) => {
+    const { rideId, role } = socket.data ?? {};
+    if (!rideId || role !== 'lead') return;
+    socket.to(rideId).emit('route:shared', payload);
+    console.log(`[Ride ${rideId}] Route shared by lead`);
+  });
+
   socket.on('sos:resolve', () => {
     const { rideId } = socket.data ?? {};
     if (!rideId) return;
@@ -88,7 +116,7 @@ module.exports = (io, socket) => {
   });
 
   socket.on('disconnect', () => {
-    const { rideId, riderId, displayName } = socket.data ?? {};
+    const { rideId, riderId, role, displayName } = socket.data ?? {};
     if (!rideId || !riderId) return;
 
     riderSockets.delete(`${rideId}:${riderId}`);
@@ -97,6 +125,16 @@ module.exports = (io, socket) => {
     if (room?.has(riderId)) room.get(riderId).online = false;
 
     io.to(rideId).emit('rider:offline', { riderId, displayName });
+
+    // If the departing rider was the lead, promote the first online rider
+    if (role === 'lead' && room) {
+      const nextLead = [...room.values()].find((r) => r.online && r.riderId !== riderId);
+      if (nextLead) {
+        nextLead.role = 'lead';
+        io.to(rideId).emit('role:changed', { riderId: nextLead.riderId, role: 'lead' });
+        console.log(`[Ride ${rideId}] Lead auto-assigned to ${nextLead.riderId} after ${riderId} disconnected`);
+      }
+    }
 
     // Clean up empty rooms after 5 minutes
     setTimeout(() => {

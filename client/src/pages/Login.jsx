@@ -46,7 +46,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center p-6">
+    <div className="min-h-dvh bg-[#0F0F0F] flex flex-col items-center justify-center px-6
+                    pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
 
       {/* Logo */}
       <div className="mb-8 text-center">
@@ -99,8 +100,9 @@ export default function Login() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="e.g. Raj Kumar"
+                style={{ fontSize: 16 }}
                 className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
-                           border border-transparent focus:border-[#FFE500]/50 outline-none text-sm"
+                           border border-transparent focus:border-[#FFE500]/50 outline-none"
               />
             </div>
           )}
@@ -112,8 +114,9 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              style={{ fontSize: 16 }}
               className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
-                         border border-transparent focus:border-[#FFE500]/50 outline-none text-sm"
+                         border border-transparent focus:border-[#FFE500]/50 outline-none"
             />
           </div>
 
@@ -125,8 +128,9 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               onKeyDown={(e) => e.key === 'Enter' && handleEmail()}
+              style={{ fontSize: 16 }}
               className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
-                         border border-transparent focus:border-[#FFE500]/50 outline-none text-sm"
+                         border border-transparent focus:border-[#FFE500]/50 outline-none"
             />
           </div>
 

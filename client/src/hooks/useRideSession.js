@@ -33,11 +33,21 @@ export function useRideSession() {
     webrtcMesh.onChat = (message) => dispatch({ type: 'CHAT_MESSAGE', message });
     webrtcMesh.onSOS  = (payload) => dispatch({ type: 'SOS_RECEIVED', payload });
 
+    // Shared route from lead (online only)
+    socket.on('route:shared', (route) => dispatch({ type: 'SET_SHARED_ROUTE', route }));
+
+    // Role changes (manual assignment or auto-reassign on lead disconnect)
+    socket.on('role:changed', ({ riderId, role }) => dispatch({ type: 'ROLE_CHANGED', riderId, role }));
+
     // ride:snapshot may have arrived before init() ran (React effect ordering).
     // Re-run connection attempts for any riders already in state.
     if (state.riders.length > 0) webrtcMesh.onSnapshot(state.riders);
 
-    return () => webrtcMesh.destroy();
+    return () => {
+      socket.off('route:shared');
+      socket.off('role:changed');
+      webrtcMesh.destroy();
+    };
   }, [state.rideId, state.selfRider?.riderId]);
 
   // ── GPS broadcasting with automatic fallback ─────────────────────────────
@@ -65,8 +75,10 @@ export function useRideSession() {
     messages:    state.messages,
     unreadCount: state.unreadCount,
     rideId:      state.rideId,
-    p2pPeers,        // > 0 means at least one DataChannel is open
-    p2pConnecting,   // > 0 means WebRTC handshake in progress
+    sharedRoute: state.sharedRoute,
+    trails:      state.trails,
+    p2pPeers,
+    p2pConnecting,
     dispatch,
   };
 }

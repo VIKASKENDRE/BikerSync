@@ -8,6 +8,8 @@ import Ride from './pages/Ride';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
+import Feed from './pages/Feed';
+import Profile from './pages/Profile';
 
 // Boots global socket listeners and voice playback — exactly once
 function AppServices() {
@@ -39,8 +41,11 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
             <Route path="/ride/:rideId" element={<ProtectedRoute><Ride /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/admin"    element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/settings"       element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/admin"          element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/feed"           element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+            <Route path="/profile"        element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/profile/:uid"   element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           </Routes>
         </BrowserRouter>
       </RideProvider>

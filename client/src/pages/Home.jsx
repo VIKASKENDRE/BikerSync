@@ -89,7 +89,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex flex-col items-center justify-center p-6 overflow-y-auto">
+    <div className="min-h-dvh bg-[#0F0F0F] flex flex-col items-center justify-center px-6 overflow-y-auto
+                    pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
 
       {/* Logo + user info */}
       <div className="mb-8 text-center">
@@ -152,15 +153,22 @@ export default function Home() {
 
       {/* Logged-in user bar */}
       <div className="w-full max-w-sm flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2">
-          {user?.photoURL && (
-            <img src={user.photoURL} alt="" className="w-7 h-7 rounded-full" />
-          )}
-          <span className="text-gray-400 text-sm truncate max-w-[200px]">
+        <button className="flex items-center gap-2" onClick={() => navigate('/profile')}>
+          {user?.photoURL
+            ? <img src={user.photoURL} alt="" className="w-7 h-7 rounded-full" />
+            : <div className="w-7 h-7 rounded-full bg-[#1A1A1A] border border-[#2A2A2A] flex items-center justify-center text-xs text-[#FFE500] font-black">
+                {(user?.displayName ?? '?')[0]?.toUpperCase()}
+              </div>
+          }
+          <span className="text-gray-400 text-sm truncate max-w-[140px]">
             {user?.displayName ?? user?.email}
           </span>
-        </div>
+        </button>
         <div className="flex items-center gap-3">
+          <button onClick={() => navigate('/feed')}
+            className="text-gray-400 text-xs font-bold hover:text-white">
+            Feed
+          </button>
           {isAdmin && (
             <button onClick={() => navigate('/admin')}
               className="text-[#FFE500] text-xs font-bold hover:text-[#FFE500]/80">
@@ -195,8 +203,9 @@ export default function Home() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. Raj Kumar"
+              style={{ fontSize: 16 }}
               className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
-                         border border-transparent focus:border-[#FFE500]/50 outline-none text-sm"
+                         border border-transparent focus:border-[#FFE500]/50 outline-none"
             />
           </div>
 
@@ -209,7 +218,8 @@ export default function Home() {
                   onChange={(e) => setRideId(e.target.value.toUpperCase())}
                   placeholder="e.g. A1B2C3D4"
                   maxLength={8}
-                  className={`mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3 outline-none text-sm font-mono
+                  style={{ fontSize: 16 }}
+                  className={`mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3 outline-none font-mono
                              border ${searchParams.get('join') && rideId === searchParams.get('join')
                                ? 'border-[#FFE500]/60 bg-[#FFE500]/5'
                                : 'border-transparent focus:border-[#FFE500]/50'}`}
@@ -252,8 +262,9 @@ export default function Home() {
                   value={rideName}
                   onChange={(e) => setRideName(e.target.value)}
                   placeholder="e.g. Pune to Mahabaleshwar"
+                  style={{ fontSize: 16 }}
                   className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
-                             border border-transparent focus:border-[#FFE500]/50 outline-none text-sm"
+                             border border-transparent focus:border-[#FFE500]/50 outline-none"
                 />
               </div>
               <p className="text-xs text-gray-500">You'll be assigned as Ride Lead automatically.</p>
