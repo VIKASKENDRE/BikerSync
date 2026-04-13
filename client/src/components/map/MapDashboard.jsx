@@ -18,7 +18,7 @@ import { LIBRARIES, MAP_OPTIONS } from '../../services/googleMaps';
 const Z = { zIndex: 1000 };
 
 export default function MapDashboard() {
-  const { riders, selfRider, unreadCount, p2pPeers, p2pConnecting, sharedRoute, trails, dispatch } = useRideSession();
+  const { riders, selfRider, unreadCount, p2pPeers, p2pConnecting, wdPeers, sharedRoute, trails, dispatch } = useRideSession();
   const navigate = useNavigate();
   const mapRef   = useRef(null);
 
@@ -142,13 +142,21 @@ export default function MapDashboard() {
               <span>Exit</span>
             </button>
 
-            {/* P2P pill */}
+            {/* WebRTC P2P pill */}
             {(p2pPeers > 0 || p2pConnecting > 0) && (
               <span className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
                 ${p2pPeers > 0
                   ? 'bg-green-500/20 border border-green-500/40 text-green-400'
                   : 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-400'}`}>
                 {p2pPeers > 0 ? `P2P·${p2pPeers}` : 'P2P…'}
+              </span>
+            )}
+
+            {/* WiFi Direct pill — shown only in APK when WD peers are connected */}
+            {wdPeers > 0 && (
+              <span className="px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
+                bg-blue-500/20 border border-blue-500/40 text-blue-400">
+                WD·{wdPeers}
               </span>
             )}
           </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSocket } from '../../hooks/useSocket';
 import { useRideContext } from '../../context/RideContext';
 import { webrtcMesh } from '../../services/webrtcMesh';
+import { wifiDirectMesh } from '../../services/wifiDirectMesh';
 
 const ROLE_COLORS = {
   lead:  'text-[#FFE500]',
@@ -45,7 +46,11 @@ export default function GroupChat({ onClose }) {
         timestamp:   Date.now(),
       };
       dispatch({ type: 'CHAT_MESSAGE', message });
-      webrtcMesh.broadcastChat(message);
+      if (webrtcMesh.activePeerCount > 0) {
+        webrtcMesh.broadcastChat(message);
+      } else {
+        wifiDirectMesh.broadcastChat(message);
+      }
     }
     setText('');
   };

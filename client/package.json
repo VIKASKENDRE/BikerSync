@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
     "@react-google-maps/api": "^2.20.8",
     "firebase": "^12.11.0",
     "leaflet": "^1.9.4",

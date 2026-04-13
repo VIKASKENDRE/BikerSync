@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { socket } from '../../services/socket';
 import { useRideContext } from '../../context/RideContext';
 import { webrtcMesh } from '../../services/webrtcMesh';
+import { wifiDirectMesh } from '../../services/wifiDirectMesh';
 import { api } from '../../services/api';
 
 export default function SOSButton() {
@@ -45,9 +46,13 @@ export default function SOSButton() {
           if (socket.connected) {
             socket.emit('sos:trigger', payload);
             try { await api.triggerSOS(payload); } catch {}
-          } else {
-            // P2P mode — broadcast to peers and confirm locally
+          } else if (webrtcMesh.activePeerCount > 0) {
+            // Tier 2: WebRTC DataChannel mesh
             webrtcMesh.broadcastSOS(payload);
+            dispatch({ type: 'SOS_RECEIVED', payload });
+          } else {
+            // Tier 3: WiFi Direct TCP mesh
+            wifiDirectMesh.broadcastSOS(payload);
             dispatch({ type: 'SOS_RECEIVED', payload });
           }
           setStatus('sent');
