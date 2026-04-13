@@ -14,14 +14,22 @@ const voiceHandler = require('./sockets/voiceHandler');
 const app = express();
 const server = http.createServer(app);
 
+// Capacitor Android uses capacitor://localhost and https://localhost as origins
+const ALLOWED_ORIGINS = [
+  process.env.CLIENT_URL,
+  'https://localhost',
+  'capacitor://localhost',
+  'http://localhost',
+].filter(Boolean);
+
 const io = new Server(server, {
-  cors: { origin: process.env.CLIENT_URL, methods: ['GET', 'POST'] },
+  cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'] },
   transports: ['websocket'],
   pingTimeout: 20000,
   pingInterval: 10000,
 });
 
-app.use(cors({ origin: process.env.CLIENT_URL }));
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 // Ensure uploads directory exists

@@ -1,5 +1,11 @@
 {
   "appId": "com.bikersync.app",
   "appName": "BikerSync",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com"]
+    }
+  }
 }
