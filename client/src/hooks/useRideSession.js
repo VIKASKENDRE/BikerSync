@@ -51,6 +51,7 @@ export function useRideSession() {
     if (!wifiDirectMesh.isAvailable) return;
 
     const { riderId, role } = state.selfRider;
+    const rideId = state.rideId;
 
     // Incoming WiFi Direct GPS — only when both socket and WebRTC are down
     wifiDirectMesh.onGPS = (fromRiderId, update) => {
@@ -63,15 +64,37 @@ export function useRideSession() {
     wifiDirectMesh.onSOS     = (payload) => dispatch({ type: 'SOS_RECEIVED', payload });
     wifiDirectMesh.onPeerChange = () => setWdPeers(wifiDirectMesh.peerCount);
 
-    if (role === 'LEAD') {
-      // Ride lead becomes the Group Owner — the TCP relay hub
-      wifiDirectMesh.createGroup(riderId).catch(console.warn);
+    if (role === 'lead') {
+      // LEAD becomes the Group Owner — TCP relay hub — immediately on ride start
+      wifiDirectMesh.createGroup(riderId, rideId).catch(console.warn);
     } else {
-      // All other riders scan and auto-connect to the first nearby device
-      wifiDirectMesh.startDiscovery(riderId).catch(console.warn);
+      // Non-lead: start peer discovery and TCP polling loop immediately.
+      // Additionally, register a WifiNetworkSuggestion so Android auto-connects
+      // to the LEAD's WD group whenever internet is lost (API 29+, one-time
+      // notification "Allow BikerSync to manage Wi-Fi networks").
+      wifiDirectMesh.startDiscovery(riderId, rideId).catch(console.warn);
+      wifiDirectMesh.suggestNetworkForRide(rideId).catch(console.warn);
     }
 
-    return () => { wifiDirectMesh.destroy(); };
+    // Non-lead: add suggestion immediately AND whenever socket goes offline.
+    // Remove the suggestion when internet is restored so Android prefers real WiFi.
+    let onConnect, onDisconnect;
+    if (role !== 'lead') {
+      onConnect = () => {
+        wifiDirectMesh.removeSuggestion().catch(console.warn);
+      };
+      onDisconnect = () => {
+        wifiDirectMesh.suggestNetworkForRide(rideId).catch(console.warn);
+      };
+      socket.on('connect',    onConnect);
+      socket.on('disconnect', onDisconnect);
+    }
+
+    return () => {
+      if (onConnect)    socket.off('connect',    onConnect);
+      if (onDisconnect) socket.off('disconnect', onDisconnect);
+      wifiDirectMesh.destroy();
+    };
   }, [state.rideId, state.selfRider?.riderId]);
 
   // ── GPS broadcasting with automatic transport fallback ────────────────────

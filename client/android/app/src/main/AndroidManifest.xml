@@ -54,5 +54,8 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="33" />
 
+    <!-- Required for PTT push-to-talk voice recording -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <uses-feature android:name="android.hardware.wifi.direct" android:required="true" />
 </manifest>

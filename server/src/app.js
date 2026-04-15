@@ -24,7 +24,8 @@ const ALLOWED_ORIGINS = [
 
 const io = new Server(server, {
   cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'] },
-  transports: ['websocket'],
+  // Allow polling fallback — mobile carriers sometimes block WebSocket upgrades
+  transports: ['websocket', 'polling'],
   pingTimeout: 20000,
   pingInterval: 10000,
 });

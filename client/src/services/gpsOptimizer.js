@@ -1,21 +1,23 @@
-const FAST_INTERVAL = 3000;  // 3s when riding
-const SLOW_INTERVAL = 15000; // 15s when stationary
-const MIN_DISTANCE_M = 5;
+const FAST_INTERVAL    = 3000;   // 3 s when riding
+const SLOW_INTERVAL    = 15000;  // 15 s when stationary
+const MIN_DISTANCE_M   = 10;     // ignore micro-jitter under 10 m
+const MAX_ACCURACY_M   = 40;     // reject readings with accuracy worse than 40 m
+const MAX_SPEED_MS     = 70;     // ~250 km/h — reject teleports above this
 
 export class GPSOptimizer {
   constructor(onUpdate) {
-    this.onUpdate = onUpdate;
-    this.watchId = null;
-    this.lastEmit = { lat: null, lng: null, time: 0 };
+    this.onUpdate  = onUpdate;
+    this.watchId   = null;
+    this.lastEmit  = { lat: null, lng: null, time: 0 };
+    this.lastGood  = null; // last accepted fix (for derived-speed calculation)
   }
 
   start() {
     if (!navigator.geolocation) throw new Error('Geolocation not supported');
-
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => this._handle(pos),
-      (err) => console.warn('[GPS]', err.message),
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      (err)  => console.warn('[GPS]', err.message),
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 },
     );
   }
 
@@ -29,32 +31,56 @@ export class GPSOptimizer {
   async _handle(pos) {
     const { latitude: lat, longitude: lng, speed, heading, accuracy } = pos.coords;
     const now = Date.now();
-    const speedKmh = (speed ?? 0) * 3.6;
-    const interval = speedKmh > 10 ? FAST_INTERVAL : SLOW_INTERVAL;
 
-    if (now - this.lastEmit.time < interval) return;
+    // ── 1. Accuracy gate — discard noisy fixes ────────────────────────────
+    if (accuracy > MAX_ACCURACY_M) return;
 
+    // ── 2. Sanity check — discard teleports ───────────────────────────────
+    if (this.lastGood) {
+      const dist = haversineMeters(this.lastGood.lat, this.lastGood.lng, lat, lng);
+      const dt   = (now - this.lastGood.time) / 1000; // seconds
+      if (dt > 0 && dist / dt > MAX_SPEED_MS) return;
+    }
+
+    // ── 3. Derive speed from position delta when GPS speed is unavailable ─
+    let speedKmh = (speed ?? -1) * 3.6;
+    if (speedKmh < 0 && this.lastGood) {
+      const dist = haversineMeters(this.lastGood.lat, this.lastGood.lng, lat, lng);
+      const dt   = (now - this.lastGood.time) / 1000;
+      speedKmh   = dt > 0 ? (dist / dt) * 3.6 : 0;
+    }
+    if (speedKmh < 0) speedKmh = 0;
+
+    // ── 4. Rate limiting ──────────────────────────────────────────────────
+    const interval = speedKmh > 5 ? FAST_INTERVAL : SLOW_INTERVAL;
+    if (now - this.lastEmit.time < interval) {
+      this.lastGood = { lat, lng, time: now };
+      return;
+    }
+
+    // ── 5. Minimum-distance gate ──────────────────────────────────────────
     if (
       this.lastEmit.lat != null &&
       haversineMeters(this.lastEmit.lat, this.lastEmit.lng, lat, lng) < MIN_DISTANCE_M &&
       now - this.lastEmit.time < SLOW_INTERVAL
-    ) return;
+    ) {
+      this.lastGood = { lat, lng, time: now };
+      return;
+    }
 
     this.lastEmit = { lat, lng, time: now };
+    this.lastGood = { lat, lng, time: now };
 
-    // Read battery level if available
+    // ── 6. Battery ────────────────────────────────────────────────────────
     let battery = null;
     if ('getBattery' in navigator) {
-      try {
-        const b = await navigator.getBattery();
-        battery = Math.round(b.level * 100);
-      } catch {}
+      try { battery = Math.round((await navigator.getBattery()).level * 100); } catch {}
     }
 
     this.onUpdate({
       lat, lng,
-      speed: Math.round(speedKmh),
-      heading: Math.round(heading ?? 0),
+      speed:    Math.round(speedKmh),
+      heading:  Math.round(heading ?? 0),
       accuracy: Math.round(accuracy),
       battery,
     });
@@ -62,7 +88,7 @@ export class GPSOptimizer {
 }
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000;
+  const R    = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =

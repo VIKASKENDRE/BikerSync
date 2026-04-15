@@ -1,32 +1,45 @@
-# Dependencies
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 
-# Build output
+# ── Build output ──────────────────────────────────────────────────────────────
 client/dist/
 client/.vercel/
+*.apk
+*.aab
+qr.html
 
-# Environment files — never commit secrets
+# ── Environment / secrets — NEVER commit these ────────────────────────────────
 .env
 .env.local
 .env.*.local
 server/.env
 client/.env
 
-# Logs
+# ── Android secrets & local config ───────────────────────────────────────────
+client/android/app/google-services.json
+client/android/local.properties
+
+# ── Android build artifacts ───────────────────────────────────────────────────
+client/android/app/build/
+client/android/build/
+client/android/.gradle/
+client/android/capacitor-cordova-android-plugins/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 
-# Editor
+# ── Editor ────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 
-# Claude / Playwright session data
+# ── Claude / Playwright session data ─────────────────────────────────────────
 .claude/
 .playwright-mcp/
 
-# Docker volumes
+# ── Docker volumes ────────────────────────────────────────────────────────────
 mongo-data/

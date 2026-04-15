@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { wifiDirectMesh } from '../../services/wifiDirectMesh';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import RiderMarker from './RiderMarker';
 import RouteLayer from './RouteLayer';
@@ -18,7 +19,7 @@ import { LIBRARIES, MAP_OPTIONS } from '../../services/googleMaps';
 const Z = { zIndex: 1000 };
 
 export default function MapDashboard() {
-  const { riders, selfRider, unreadCount, p2pPeers, p2pConnecting, wdPeers, sharedRoute, trails, dispatch } = useRideSession();
+  const { riders, selfRider, unreadCount, p2pPeers, p2pConnecting, wdPeers, rideId, sharedRoute, trails, dispatch } = useRideSession();
   const navigate = useNavigate();
   const mapRef   = useRef(null);
 
@@ -27,6 +28,44 @@ export default function MapDashboard() {
   const [confirmExit,   setConfirmExit]   = useState(false);
   const [navOpen,    setNavOpen]    = useState(false);
   const [localRoute, setLocalRoute] = useState(null); // { polyline, steps, distance, duration, destination }
+  const [rideCopied,    setRideCopied]    = useState(false);
+  const [wdToast,       setWdToast]       = useState('');
+  const [wdGroupSsid,   setWdGroupSsid]   = useState(() => wifiDirectMesh.groupSsid);
+  const [wdGroupPass,   setWdGroupPass]   = useState(() => wifiDirectMesh.groupPassphrase);
+  const prevWdPeers = useRef(0);
+
+  // Capture WiFi Direct group credentials when LEAD creates the group
+  useEffect(() => {
+    wifiDirectMesh.onGroupReady = (ssid, pass) => {
+      setWdGroupSsid(ssid);
+      setWdGroupPass(pass);
+    };
+    return () => { wifiDirectMesh.onGroupReady = null; };
+  }, []);
+
+  // On non-LEAD, derive expected group credentials from rideId
+  useEffect(() => {
+    if (rideId && selfRider?.role !== 'lead' && !wdGroupSsid) {
+      setWdGroupSsid(`DIRECT-BikerSync-${rideId.slice(0, 4)}`);
+      setWdGroupPass(`bsync${rideId}`.padEnd(8, '0').slice(0, 32));
+    }
+  }, [rideId, selfRider?.role]);
+
+  // WD connection toast — fires when a new peer connects
+  useEffect(() => {
+    if (wdPeers > prevWdPeers.current) {
+      setWdToast(`📡 ${wdPeers} rider${wdPeers !== 1 ? 's' : ''} connected via WiFi Direct`);
+      const t = setTimeout(() => setWdToast(''), 3500);
+      return () => clearTimeout(t);
+    }
+    prevWdPeers.current = wdPeers;
+  }, [wdPeers]);
+
+  const copyRideId = async () => {
+    try { await navigator.clipboard.writeText(rideId ?? ''); } catch { /* ignore */ }
+    setRideCopied(true);
+    setTimeout(() => setRideCopied(false), 2000);
+  };
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
@@ -164,27 +203,59 @@ export default function MapDashboard() {
           <div className="shrink-0"><SOSButton /></div>
         </div>
 
-        {/* Row 2: HUD */}
-        <div className="flex items-center gap-2 self-start px-3 py-1.5
-                        bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
-                        pointer-events-none">
-          <span className="text-[#FFE500] font-bold text-base tabular-nums whitespace-nowrap">
-            {selfRider?.speed ?? 0}
-            <span className="text-xs font-normal ml-0.5 text-gray-400">km/h</span>
-          </span>
-          <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
-          <RoleBadge role={selfRider?.role} />
-          {selfRider?.battery != null && (
-            <>
-              <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
-              <BatteryIndicator pct={selfRider.battery} />
-            </>
+        {/* Row 2: HUD + Ride ID */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5
+                          bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
+                          pointer-events-none">
+            <span className="text-[#FFE500] font-bold text-base tabular-nums whitespace-nowrap">
+              {selfRider?.speed ?? 0}
+              <span className="text-xs font-normal ml-0.5 text-gray-400">km/h</span>
+            </span>
+            <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
+            <RoleBadge role={selfRider?.role} />
+            {selfRider?.battery != null && (
+              <>
+                <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
+                <BatteryIndicator pct={selfRider.battery} />
+              </>
+            )}
+          </div>
+
+          {/* Ride ID pill — tap to copy */}
+          {rideId && (
+            <button
+              onClick={copyRideId}
+              className="flex items-center gap-1.5 px-3 py-1.5
+                         bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
+                         active:scale-95 transition-transform"
+            >
+              <span className="text-gray-500 text-xs">ID</span>
+              <span className="text-[#FFE500] font-mono font-black text-xs tracking-widest">
+                {rideCopied ? '✓ Copied' : rideId}
+              </span>
+            </button>
           )}
         </div>
       </div>
 
+      {/* WD CONNECTED TOAST */}
+      {wdToast && (
+        <div className="absolute top-[7rem] left-1/2 -translate-x-1/2 z-[2000]
+                        px-4 py-2 bg-blue-600/90 backdrop-blur-sm rounded-full
+                        text-white text-xs font-bold whitespace-nowrap shadow-lg
+                        animate-fade-in-out pointer-events-none">
+          {wdToast}
+        </div>
+      )}
+
       {/* OFFLINE BANNER */}
-      <HotspotBanner />
+      <HotspotBanner
+        wdPeers={wdPeers}
+        wdGroupSsid={wdGroupSsid}
+        wdGroupPass={wdGroupPass}
+        isLead={selfRider?.role === 'lead'}
+      />
 
       {/* RIDER LIST */}
       {riderListOpen && (

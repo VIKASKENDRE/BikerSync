@@ -3,14 +3,25 @@
 export const BASE = `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000'}/api`;
 
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
-  return data;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000); // 15 s timeout
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Server timeout — check your connection');
+    if (!navigator.onLine) throw new Error('No internet connection');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const api = {
