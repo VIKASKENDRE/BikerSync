@@ -49,8 +49,11 @@ module.exports = (io, socket) => {
     const room = rideRooms.get(rideId);
     if (!room) return;
 
-    // Reject low-accuracy fixes to avoid map jitter
-    if (accuracy > 30) return;
+    // Reject low-accuracy fixes to avoid map jitter.
+    // Must match GPSOptimizer.MAX_ACCURACY_M (40 m) — a stricter server limit
+    // silently drops updates that passed the client filter, causing riders to
+    // appear static on mobile data where GPS first-fixes are often 30–40 m.
+    if (accuracy > 40) return;
 
     const prev = room.get(riderId);
     if (prev?.lat != null) {
