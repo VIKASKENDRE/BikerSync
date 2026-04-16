@@ -26,6 +26,25 @@ export default function Home() {
   const [error, setError]     = useState('');
   const [shareInfo, setShareInfo] = useState(null); // { rideId, url } after creating
   const [copied, setCopied]   = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [socketError, setSocketError] = useState('');
+
+  // Track socket connection for diagnostic pill
+  useEffect(() => {
+    const onConnect    = () => { setSocketConnected(true); setSocketError(''); };
+    const onDisconnect = (reason) => { setSocketConnected(false); setSocketError(reason ?? ''); };
+    const onError      = (err) => { setSocketConnected(false); setSocketError(err?.message ?? String(err)); };
+    socket.on('connect',       onConnect);
+    socket.on('disconnect',    onDisconnect);
+    socket.on('connect_error', onError);
+    socket.connect();
+    setSocketConnected(socket.connected);
+    return () => {
+      socket.off('connect',       onConnect);
+      socket.off('disconnect',    onDisconnect);
+      socket.off('connect_error', onError);
+    };
+  }, []);
 
   // Use Firebase UID as stable riderId — consistent across devices
   const riderId = user?.uid ?? crypto.randomUUID();
@@ -96,6 +115,19 @@ export default function Home() {
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-black text-[#FFE500] tracking-tight">BikerSync</h1>
         <p className="text-gray-400 text-sm mt-1">Stay together. Ride safe.</p>
+        <div className="mt-2 flex flex-col items-center gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className={`inline-block w-2 h-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-red-500'}`} />
+            <span className={`text-xs font-mono ${socketConnected ? 'text-green-400' : 'text-red-400'}`}>
+              {socketConnected ? 'Server: Connected' : 'Server: Offline'}
+            </span>
+          </div>
+          {!socketConnected && socketError ? (
+            <span className="text-[10px] text-gray-500 font-mono max-w-[280px] text-center leading-tight">
+              {socketError}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* SHARE PANEL — shown after creating a ride */}

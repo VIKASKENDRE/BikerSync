@@ -23,9 +23,9 @@ const ALLOWED_ORIGINS = [
 ].filter(Boolean);
 
 const io = new Server(server, {
+  path: '/bs',           // non-default path bypasses Railway CDN's socket.io interception
   cors: { origin: ALLOWED_ORIGINS, methods: ['GET', 'POST'] },
-  // Allow polling fallback — mobile carriers sometimes block WebSocket upgrades
-  transports: ['websocket', 'polling'],
+  transports: ['polling', 'websocket'], // polling first so Jio/carrier proxies can connect
   pingTimeout: 20000,
   pingInterval: 10000,
 });
