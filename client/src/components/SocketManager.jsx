@@ -28,7 +28,8 @@ export function SocketManager() {
     };
     const onMessage   = (message)  => dispatch({ type: 'CHAT_MESSAGE', message });
     const onSOS       = (payload)  => dispatch({ type: 'SOS_RECEIVED', payload });
-    const onSOSResolve = ()        => dispatch({ type: 'SOS_RESOLVED' });
+    const onSOSResolve  = ()        => dispatch({ type: 'SOS_RESOLVED' });
+    const onRideEnded   = ()        => dispatch({ type: 'LEAVE_RIDE' });
 
     // WebRTC signaling — server relays offer/answer/ICE to us
     const onWebRTCSignal = ({ from, signal }) => webrtcMesh.handleSignal(from, signal);
@@ -40,6 +41,7 @@ export function SocketManager() {
     socket.on('chat:message',  onMessage);
     socket.on('sos:broadcast', onSOS);
     socket.on('sos:resolved',  onSOSResolve);
+    socket.on('ride:ended',    onRideEnded);
     socket.on('webrtc:signal', onWebRTCSignal);
 
     return () => {
@@ -50,6 +52,7 @@ export function SocketManager() {
       socket.off('chat:message',  onMessage);
       socket.off('sos:broadcast', onSOS);
       socket.off('sos:resolved',  onSOSResolve);
+      socket.off('ride:ended',    onRideEnded);
       socket.off('webrtc:signal', onWebRTCSignal);
     };
   }, [dispatch]);

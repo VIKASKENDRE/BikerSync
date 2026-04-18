@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { wifiDirectMesh } from '../../services/wifiDirectMesh';
-import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
+import { enterPiP, onPiPChange } from '../../services/pip';
+import { deleteRide } from '../../services/rtdbRide';
 import RiderMarker from './RiderMarker';
 import RouteLayer from './RouteLayer';
 import TrailLayer from './TrailLayer';
-import NavigationPanel from './NavigationPanel';
 import HotspotBanner from './HotspotBanner';
 import SOSButton from '../sos/SOSButton';
 import PushToTalk from '../comms/PushToTalk';
@@ -14,36 +15,49 @@ import RiderList from '../ui/RiderList';
 import SOSAlert from '../ui/SOSAlert';
 import { useRideSession } from '../../hooks/useRideSession';
 import { socket } from '../../services/socket';
-import { LIBRARIES, MAP_OPTIONS } from '../../services/googleMaps';
 
-const Z = { zIndex: 1000 };
+const Z_UI   = { zIndex: 1000 };
+const Z_OVER = { zIndex: 2000 };
+const Z_TOP  = { zIndex: 3000 };
+
+function MapController({ selfRider, mapRef }) {
+  const map = useMap();
+  useEffect(() => { mapRef.current = map; }, [map]); // eslint-disable-line
+  useEffect(() => {
+    if (selfRider?.lat) map.panTo([selfRider.lat, selfRider.lng]);
+  }, [selfRider?.lat, selfRider?.lng]); // eslint-disable-line
+  return null;
+}
+
 
 export default function MapDashboard() {
-  const { riders, selfRider, unreadCount, p2pPeers, p2pConnecting, wdPeers, rideId, sharedRoute, trails, dispatch } = useRideSession();
-  const navigate = useNavigate();
-  const mapRef   = useRef(null);
+  const {
+    riders, selfRider, unreadCount,
+    p2pPeers, p2pConnecting, wdPeers,
+    rideId, sharedRoute, trails, dispatch,
+  } = useRideSession();
+  const navigate    = useNavigate();
+  const mapRef      = useRef(null);
 
   const [chatOpen,      setChatOpen]      = useState(false);
   const [riderListOpen, setRiderListOpen] = useState(false);
   const [confirmExit,   setConfirmExit]   = useState(false);
-  const [navOpen,    setNavOpen]    = useState(false);
-  const [localRoute, setLocalRoute] = useState(null); // { polyline, steps, distance, duration, destination }
   const [rideCopied,    setRideCopied]    = useState(false);
   const [wdToast,       setWdToast]       = useState('');
   const [wdGroupSsid,   setWdGroupSsid]   = useState(() => wifiDirectMesh.groupSsid);
   const [wdGroupPass,   setWdGroupPass]   = useState(() => wifiDirectMesh.groupPassphrase);
+  const [isPiP,         setIsPiP]         = useState(false);
+  // Track whether Google Maps navigation is already running.
+  // If true, tapping Navigate again just re-enters PiP without opening a new intent
+  // (which would interrupt the ongoing turn-by-turn navigation).
+  const [isNavigating,  setIsNavigating]  = useState(false);
   const prevWdPeers = useRef(0);
 
-  // Capture WiFi Direct group credentials when LEAD creates the group
   useEffect(() => {
-    wifiDirectMesh.onGroupReady = (ssid, pass) => {
-      setWdGroupSsid(ssid);
-      setWdGroupPass(pass);
-    };
+    wifiDirectMesh.onGroupReady = (ssid, pass) => { setWdGroupSsid(ssid); setWdGroupPass(pass); };
     return () => { wifiDirectMesh.onGroupReady = null; };
   }, []);
 
-  // On non-LEAD, derive expected group credentials from rideId
   useEffect(() => {
     if (rideId && selfRider?.role !== 'lead' && !wdGroupSsid) {
       setWdGroupSsid(`DIRECT-BikerSync-${rideId.slice(0, 4)}`);
@@ -51,7 +65,6 @@ export default function MapDashboard() {
     }
   }, [rideId, selfRider?.role]);
 
-  // WD connection toast — fires when a new peer connects
   useEffect(() => {
     if (wdPeers > prevWdPeers.current) {
       setWdToast(`📡 ${wdPeers} rider${wdPeers !== 1 ? 's' : ''} connected via WiFi Direct`);
@@ -61,83 +74,90 @@ export default function MapDashboard() {
     prevWdPeers.current = wdPeers;
   }, [wdPeers]);
 
+  // Subscribe to PiP mode changes from the native layer
+  useEffect(() => {
+    const handle = onPiPChange(({ active }) => setIsPiP(active));
+    return () => handle?.remove?.();
+  }, []);
+
   const copyRideId = async () => {
-    try { await navigator.clipboard.writeText(rideId ?? ''); } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText(rideId ?? ''); } catch {}
     setRideCopied(true);
     setTimeout(() => setRideCopied(false), 2000);
   };
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
-    libraries:        LIBRARIES,
-  });
-
-  const onMapLoad = useCallback((map) => { mapRef.current = map; }, []);
-
-  // Auto-pan to self position on GPS update
-  useEffect(() => {
-    if (selfRider?.lat && mapRef.current) {
-      mapRef.current.panTo({ lat: selfRider.lat, lng: selfRider.lng });
-    }
-  }, [selfRider?.lat, selfRider?.lng]);
-
   const recenter = () => {
-    if (selfRider?.lat && mapRef.current) {
-      mapRef.current.panTo({ lat: selfRider.lat, lng: selfRider.lng });
-      mapRef.current.setZoom(16);
-    }
+    if (selfRider?.lat && mapRef.current)
+      mapRef.current.setView([selfRider.lat, selfRider.lng], 16);
   };
 
-  const openChat = () => {
-    setChatOpen(true);
-    setNavOpen(false);
-    dispatch({ type: 'CHAT_READ' });
-  };
+  const openChat = () => { setChatOpen(true); dispatch({ type: 'CHAT_READ' }); };
 
+  /** Normal leave — just this rider exits. */
   const exitRide = () => {
+    setIsNavigating(false);
     socket.disconnect();
     dispatch({ type: 'LEAVE_RIDE' });
     navigate('/', { replace: true });
   };
 
-  if (loadError) {
-    return (
-      <div className="w-screen h-dvh bg-[#0F0F0F] flex items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-red-400 font-bold mb-2">Map failed to load</p>
-          <p className="text-gray-400 text-sm">Check that VITE_GOOGLE_MAPS_API_KEY is set and the Maps JavaScript API is enabled.</p>
-        </div>
-      </div>
-    );
-  }
+  /** LEAD only — ends the ride for everyone by deleting RTDB data. */
+  const endRideForAll = async () => {
+    setIsNavigating(false);
+    socket.emit('ride:end', { rideId });
+    await deleteRide(rideId).catch(() => {});
+    socket.disconnect();
+    dispatch({ type: 'LEAVE_RIDE' });
+    navigate('/', { replace: true });
+  };
 
-  if (!isLoaded) {
-    return (
-      <div className="w-screen h-dvh bg-[#0F0F0F] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-10 h-10 border-2 border-[#FFE500] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">Loading map…</p>
-        </div>
-      </div>
-    );
-  }
+  /**
+   * Navigate button:
+   * - First tap: enters PiP + opens Google Maps navigation from current position.
+   * - Subsequent taps while navigation is active: just re-enters PiP so the user
+   *   returns to the floating window WITHOUT firing a new Maps intent (which would
+   *   ask "exit navigation?").
+   */
+  const handleNavigate = async () => {
+    if (isNavigating) {
+      // Maps is already navigating — just float back over it
+      await enterPiP();
+      return;
+    }
+    setIsNavigating(true);
+    await enterPiP();
+    await new Promise((r) => setTimeout(r, 120));
+    const origin = selfRider?.lat ? `${selfRider.lat},${selfRider.lng}` : '';
+    const url = origin
+      ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&travelmode=driving`
+      : `https://www.google.com/maps/`;
+    window.open(url, '_system');
+  };
+
+  const stopNavigation = () => setIsNavigating(false);
 
   const initialCenter = selfRider?.lat
-    ? { lat: selfRider.lat, lng: selfRider.lng }
-    : { lat: 20.5937, lng: 78.9629 };
+    ? [selfRider.lat, selfRider.lng]
+    : [20.5937, 78.9629];
 
   return (
     <div className="relative w-screen h-dvh bg-[#1a1a1a]">
 
-      {/* MAP */}
+      {/* ── MAP ─────────────────────────────────────────────────────── */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
-        <GoogleMap
-          mapContainerStyle={{ width: '100%', height: '100%' }}
+        <MapContainer
           center={initialCenter}
           zoom={15}
-          options={MAP_OPTIONS}
-          onLoad={onMapLoad}
+          style={{ width: '100%', height: '100%' }}
+          zoomControl={false}
+          attributionControl={false}
         >
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            maxZoom={19}
+          />
+          <MapController selfRider={selfRider} mapRef={mapRef} />
           {riders.map((rider) => (
             <RiderMarker
               key={rider.riderId}
@@ -146,221 +166,254 @@ export default function MapDashboard() {
             />
           ))}
           <TrailLayer trails={trails} riders={riders} selfId={selfRider?.riderId} />
-          <RouteLayer route={localRoute ?? sharedRoute} mapRef={mapRef} />
-        </GoogleMap>
+          <RouteLayer route={sharedRoute} />
+        </MapContainer>
       </div>
 
-      {/* TOP BAR */}
-      <div
-        className="absolute top-0 left-0 right-0 flex flex-col gap-1.5 px-3
-                   pt-[max(0.75rem,env(safe-area-inset-top))] pb-2"
-        style={Z}
-      >
-        {/* Row 1: riders + exit | SOS */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setRiderListOpen((o) => !o)}
-              className="flex items-center gap-1.5 px-3 py-2
-                         bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full
-                         border border-[#2A2A2A] text-white text-sm font-medium
-                         active:scale-95 transition-transform"
-            >
-              <span>🏍</span>
-              <span>{riders.filter((r) => r.online !== false).length}</span>
-            </button>
+      {/* ── All overlay UI — hidden when floating in PiP ────────────── */}
+      {!isPiP && (
+        <>
+          {/* ── TOP BAR ───────────────────────────────────────────────── */}
+          <div
+            className="absolute top-0 left-0 right-0 flex flex-col gap-1.5 px-3
+                       pt-[max(0.75rem,env(safe-area-inset-top))] pb-2"
+            style={Z_UI}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setRiderListOpen((o) => !o)}
+                  className="flex items-center gap-1.5 px-3 py-2
+                             bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full
+                             border border-[#2A2A2A] text-white text-sm font-medium
+                             active:scale-95 transition-transform"
+                >
+                  <span>🏍</span>
+                  <span>{riders.filter((r) => r.online !== false).length}</span>
+                </button>
 
-            <button
-              onClick={() => setConfirmExit(true)}
-              className="flex items-center gap-1.5 px-3 py-2
-                         bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full
-                         border border-[#2A2A2A] text-gray-400 text-sm font-medium
-                         active:scale-95 transition-transform"
-            >
-              <span>✕</span>
-              <span>Exit</span>
-            </button>
+                <button
+                  onClick={() => setConfirmExit(true)}
+                  className="flex items-center gap-1.5 px-3 py-2
+                             bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full
+                             border border-[#2A2A2A] text-gray-400 text-sm font-medium
+                             active:scale-95 transition-transform"
+                >
+                  <span>✕</span>
+                  <span>Exit</span>
+                </button>
 
-            {/* WebRTC P2P pill */}
-            {(p2pPeers > 0 || p2pConnecting > 0) && (
-              <span className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
-                ${p2pPeers > 0
-                  ? 'bg-green-500/20 border border-green-500/40 text-green-400'
-                  : 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-400'}`}>
-                {p2pPeers > 0 ? `P2P·${p2pPeers}` : 'P2P…'}
-              </span>
-            )}
+                {(p2pPeers > 0 || p2pConnecting > 0) && (
+                  <span className={`px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
+                    ${p2pPeers > 0
+                      ? 'bg-green-500/20 border border-green-500/40 text-green-400'
+                      : 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-400'}`}>
+                    {p2pPeers > 0 ? `P2P·${p2pPeers}` : 'P2P…'}
+                  </span>
+                )}
+                {wdPeers > 0 && (
+                  <span className="px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
+                    bg-blue-500/20 border border-blue-500/40 text-blue-400">
+                    WD·{wdPeers}
+                  </span>
+                )}
+              </div>
 
-            {/* WiFi Direct pill — shown only in APK when WD peers are connected */}
-            {wdPeers > 0 && (
-              <span className="px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
-                bg-blue-500/20 border border-blue-500/40 text-blue-400">
-                WD·{wdPeers}
-              </span>
-            )}
-          </div>
+              <div className="shrink-0"><SOSButton /></div>
+            </div>
 
-          <div className="shrink-0"><SOSButton /></div>
-        </div>
-
-        {/* Row 2: HUD + Ride ID */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5
-                          bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
-                          pointer-events-none">
-            <span className="text-[#FFE500] font-bold text-base tabular-nums whitespace-nowrap">
-              {selfRider?.speed ?? 0}
-              <span className="text-xs font-normal ml-0.5 text-gray-400">km/h</span>
-            </span>
-            <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
-            <RoleBadge role={selfRider?.role} />
-            {selfRider?.battery != null && (
-              <>
+            {/* Row 2: speed HUD + Ride ID */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5
+                              bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
+                              pointer-events-none">
+                <span className="text-[#FFE500] font-bold text-base tabular-nums whitespace-nowrap">
+                  {selfRider?.speed ?? 0}
+                  <span className="text-xs font-normal ml-0.5 text-gray-400">km/h</span>
+                </span>
                 <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
-                <BatteryIndicator pct={selfRider.battery} />
-              </>
-            )}
-          </div>
+                <RoleBadge role={selfRider?.role} />
+                {selfRider?.battery != null && (
+                  <>
+                    <div className="w-px h-3.5 bg-[#2A2A2A] shrink-0" />
+                    <BatteryIndicator pct={selfRider.battery} />
+                  </>
+                )}
+              </div>
 
-          {/* Ride ID pill — tap to copy */}
-          {rideId && (
-            <button
-              onClick={copyRideId}
-              className="flex items-center gap-1.5 px-3 py-1.5
-                         bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
-                         active:scale-95 transition-transform"
-            >
-              <span className="text-gray-500 text-xs">ID</span>
-              <span className="text-[#FFE500] font-mono font-black text-xs tracking-widest">
-                {rideCopied ? '✓ Copied' : rideId}
-              </span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* WD CONNECTED TOAST */}
-      {wdToast && (
-        <div className="absolute top-[7rem] left-1/2 -translate-x-1/2 z-[2000]
-                        px-4 py-2 bg-blue-600/90 backdrop-blur-sm rounded-full
-                        text-white text-xs font-bold whitespace-nowrap shadow-lg
-                        animate-fade-in-out pointer-events-none">
-          {wdToast}
-        </div>
-      )}
-
-      {/* OFFLINE BANNER */}
-      <HotspotBanner
-        wdPeers={wdPeers}
-        wdGroupSsid={wdGroupSsid}
-        wdGroupPass={wdGroupPass}
-        isLead={selfRider?.role === 'lead'}
-      />
-
-      {/* RIDER LIST */}
-      {riderListOpen && (
-        <div className="absolute top-[5.5rem] left-3 w-56" style={Z}>
-          <RiderList
-            riders={riders}
-            selfRider={selfRider}
-            onAssignLead={(targetRiderId) => socket.emit('role:assign', { targetRiderId })}
-            onClose={() => setRiderListOpen(false)}
-          />
-        </div>
-      )}
-
-      {/* EXIT CONFIRMATION */}
-      {confirmExit && (
-        <div className="absolute inset-0 z-[3000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
-          <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-2xl p-6 w-full max-w-xs">
-            <p className="text-white font-bold text-center mb-1">Leave the ride?</p>
-            <p className="text-gray-400 text-sm text-center mb-5">You'll be removed from the group.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmExit(false)}
-                className="flex-1 py-3.5 rounded-xl bg-[#2A2A2A] text-white font-bold text-sm
-                           active:scale-95 transition-transform"
-              >Stay</button>
-              <button
-                onClick={exitRide}
-                className="flex-1 py-3.5 rounded-xl bg-red-700 text-white font-bold text-sm
-                           active:scale-95 transition-transform"
-              >Leave</button>
+              {rideId && (
+                <button
+                  onClick={copyRideId}
+                  className="flex items-center gap-1.5 px-3 py-1.5
+                             bg-[#1A1A1A]/90 backdrop-blur-sm rounded-full border border-[#2A2A2A]
+                             active:scale-95 transition-transform"
+                >
+                  <span className="text-gray-500 text-xs">ID</span>
+                  <span className="text-[#FFE500] font-mono font-black text-xs tracking-widest">
+                    {rideCopied ? '✓ Copied' : rideId}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
-        </div>
+
+          {/* ── WD TOAST ──────────────────────────────────────────────── */}
+          {wdToast && (
+            <div className="absolute top-[7rem] left-1/2 -translate-x-1/2
+                            px-4 py-2 bg-blue-600/90 backdrop-blur-sm rounded-full
+                            text-white text-xs font-bold whitespace-nowrap shadow-lg
+                            pointer-events-none"
+                 style={Z_OVER}>
+              {wdToast}
+            </div>
+          )}
+
+          {/* ── OFFLINE BANNER ────────────────────────────────────────── */}
+          <HotspotBanner
+            wdPeers={wdPeers}
+            wdGroupSsid={wdGroupSsid}
+            wdGroupPass={wdGroupPass}
+            isLead={selfRider?.role === 'lead'}
+          />
+
+          {/* ── RIDER LIST ────────────────────────────────────────────── */}
+          {riderListOpen && (
+            <div className="absolute top-[5.5rem] left-3 w-56" style={Z_UI}>
+              <RiderList
+                riders={riders}
+                selfRider={selfRider}
+                onAssignLead={(targetRiderId) => socket.emit('role:assign', { targetRiderId })}
+                onClose={() => setRiderListOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* ── EXIT DIALOG ───────────────────────────────────────────── */}
+          {confirmExit && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6"
+                 style={Z_TOP}>
+              <div className="bg-[#1A1A1A] border border-[#2A2A2A] rounded-2xl p-6 w-full max-w-xs">
+                <p className="text-white font-bold text-center mb-1">
+                  {selfRider?.role === 'lead' ? 'Leave or end the ride?' : 'Leave the ride?'}
+                </p>
+                <p className="text-gray-400 text-sm text-center mb-5">
+                  {selfRider?.role === 'lead'
+                    ? 'You can leave (another rider becomes Lead) or end the ride for everyone.'
+                    : 'You\'ll be removed from the group.'}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {selfRider?.role === 'lead' && (
+                    <button
+                      onClick={endRideForAll}
+                      className="w-full py-3.5 rounded-xl bg-red-900 border border-red-700
+                                 text-red-300 font-bold text-sm active:scale-95 transition-transform"
+                    >
+                      🏁 End Ride for Everyone
+                    </button>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConfirmExit(false)}
+                      className="flex-1 py-3.5 rounded-xl bg-[#2A2A2A] text-white font-bold text-sm
+                                 active:scale-95 transition-transform"
+                    >Stay</button>
+                    <button
+                      onClick={exitRide}
+                      className="flex-1 py-3.5 rounded-xl bg-red-700 text-white font-bold text-sm
+                                 active:scale-95 transition-transform"
+                    >
+                      {selfRider?.role === 'lead' ? 'Just Leave' : 'Leave'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── BOTTOM CONTROLS ───────────────────────────────────────── */}
+          {!chatOpen && (
+            <div
+              className="absolute bottom-0 left-0 right-0
+                         flex items-end justify-between px-5 pt-8
+                         pb-[max(1.5rem,env(safe-area-inset-bottom))]
+                         bg-gradient-to-t from-[#0F0F0F]/80 via-[#0F0F0F]/40 to-transparent
+                         pointer-events-none"
+              style={Z_UI}
+            >
+              <div className="pointer-events-auto"><PushToTalk /></div>
+
+              <div className="flex flex-col items-center gap-3 pointer-events-auto">
+                {/* Navigate row: [stop] + [go-to-Maps] side by side when navigating */}
+                <div className="flex items-center gap-2">
+                  {/* Stop navigation — only visible while navigating */}
+                  {isNavigating && (
+                    <button
+                      onClick={stopNavigation}
+                      className="w-10 h-10 rounded-full bg-red-700 border border-red-500/60
+                                 flex items-center justify-center text-white text-sm font-black
+                                 active:scale-95 transition-transform shadow-lg"
+                      aria-label="Stop navigation"
+                    >✕</button>
+                  )}
+                  {/* Navigate / return-to-Maps */}
+                  <button
+                    onClick={handleNavigate}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center
+                               active:scale-95 transition-transform shadow-lg
+                               ${isNavigating
+                                 ? 'bg-[#4285F4] border-2 border-white/50'
+                                 : 'bg-[#4285F4] border border-[#4285F4]/60'}`}
+                    aria-label={isNavigating ? 'Return to Google Maps navigation' : 'Navigate with Google Maps'}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <button
+                  onClick={openChat}
+                  className="relative w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#2A2A2A]
+                             flex items-center justify-center text-xl
+                             active:scale-95 transition-transform shadow-lg"
+                  aria-label="Group chat"
+                >
+                  💬
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1
+                                     bg-red-500 rounded-full flex items-center justify-center
+                                     text-white text-xs font-black leading-none">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={recenter}
+                  className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#2A2A2A]
+                             flex items-center justify-center text-xl text-white
+                             active:scale-95 transition-transform shadow-lg"
+                  aria-label="Center map"
+                >◎</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── CHAT ──────────────────────────────────────────────────── */}
+          {chatOpen && (
+            <div
+              className="absolute bottom-0 left-0 right-0"
+              style={{ ...Z_OVER, paddingBottom: 'env(safe-area-inset-bottom)' }}
+            >
+              <GroupChat onClose={() => setChatOpen(false)} />
+            </div>
+          )}
+
+          {/* ── SOS ALERT ─────────────────────────────────────────────── */}
+          <SOSAlert />
+        </>
       )}
 
-      {/* BOTTOM CONTROLS */}
-      {!chatOpen && (
-        <div
-          className="absolute bottom-0 left-0 right-0
-                     flex items-end justify-between px-5 pt-6
-                     pb-[max(1.25rem,env(safe-area-inset-bottom))]
-                     bg-gradient-to-t from-[#0F0F0F] via-[#0F0F0F]/60 to-transparent"
-          style={Z}
-        >
-          <PushToTalk />
-
-          <button
-            onClick={recenter}
-            className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#2A2A2A]
-                       flex items-center justify-center text-xl text-white
-                       active:scale-95 transition-transform shadow-lg"
-            aria-label="Center map"
-          >◎</button>
-
-          <button
-            onClick={() => setNavOpen((o) => !o)}
-            className={`w-12 h-12 rounded-full border flex items-center justify-center text-xl
-                       active:scale-95 transition-transform shadow-lg
-                       ${localRoute || sharedRoute
-                         ? 'bg-[#4A90E2]/20 border-[#4A90E2]/60 text-[#4A90E2]'
-                         : 'bg-[#1A1A1A] border-[#2A2A2A] text-white'}`}
-            aria-label="Navigation"
-          >🗺</button>
-
-          <button
-            onClick={openChat}
-            className="relative w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#2A2A2A]
-                       flex items-center justify-center text-xl
-                       active:scale-95 transition-transform shadow-lg"
-            aria-label="Group chat"
-          >
-            💬
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1
-                               bg-red-500 rounded-full flex items-center justify-center
-                               text-white text-xs font-black leading-none">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* CHAT */}
-      {chatOpen && (
-        <div
-          className="absolute bottom-0 left-0 right-0"
-          style={{ ...Z, paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <GroupChat onClose={() => setChatOpen(false)} />
-        </div>
-      )}
-
-      {/* NAVIGATION */}
-      <NavigationPanel
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        selfRider={selfRider}
-        isLead={selfRider?.role === 'lead'}
-        route={localRoute}
-        onRoute={setLocalRoute}
-      />
-
-      {/* SOS ALERT */}
-      <SOSAlert />
     </div>
   );
 }

@@ -1,5 +1,9 @@
+/**
+ * firebase.js — Firebase Realtime Database only.
+ * Firebase Authentication has been removed (offline-first, no login required).
+ */
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -10,6 +14,15 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+const RTDB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL ||
+  `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`;
+
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+
+let _rtdb = null;
+try {
+  _rtdb = getDatabase(app, RTDB_URL);
+} catch (e) {
+  console.error('[Firebase] RTDB init failed:', e.message);
+}
+export const rtdb = _rtdb;

@@ -26,13 +26,16 @@ class WebRTCMesh {
     this._selfId   = null;
 
     // Callbacks — set by consumers
-    this.onGPS        = null; // (riderId, update) => void
-    this.onPeerChange = null; // () => void
-    this.onChat       = null; // (message) => void
-    this.onSOS        = null; // (payload) => void
-    this.onVoiceStart = null; // (riderId, mimeType) => void
-    this.onVoiceChunk = null; // (riderId, ArrayBuffer) => void
-    this.onVoiceEnd   = null; // (riderId) => void
+    this.onGPS         = null; // (riderId, update) => void
+    this.onPeerChange  = null; // () => void
+    this.onChat        = null; // (message) => void
+    this.onSOS         = null; // (payload) => void
+    this.onVoiceStart  = null; // (riderId, mimeType) => void
+    this.onVoiceChunk  = null; // (riderId, ArrayBuffer) => void
+    this.onVoiceEnd    = null; // (riderId) => void
+    // Set by useRideSession to route signals via RTDB when socket is offline.
+    // This is the critical path that makes WebRTC work on mobile data.
+    this.fallbackSignal = null; // (toRiderId, signal) => void
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -245,6 +248,8 @@ class WebRTCMesh {
   _signal(toRiderId, signal) {
     if (socket.connected) {
       socket.emit('webrtc:signal', { to: toRiderId, signal });
+    } else if (this.fallbackSignal) {
+      this.fallbackSignal(toRiderId, signal); // RTDB path — works on all mobile networks
     } else {
       this._relayViaDataChannels(toRiderId, this._selfId, signal, RELAY_TTL, null);
     }

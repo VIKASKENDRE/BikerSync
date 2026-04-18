@@ -1,55 +1,44 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import {
-  onAuthStateChanged,
-  signInWithPopup,
-  signInWithCredential,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  signOut,
-} from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { auth, googleProvider } from '../services/firebase';
+/**
+ * AuthContext — offline-first user identity.
+ *
+ * No Firebase Authentication. riderId is a stable UUID generated once
+ * and stored in localStorage forever. displayName is also persisted so
+ * the user only types it once.
+ *
+ * Exposes the same { user, logout } shape that Home.jsx expects so that
+ * callers don't need to change.
+ */
+import { createContext, useContext, useMemo, useState } from 'react';
 
 const AuthContext = createContext(null);
 
+function loadOrCreateRiderId() {
+  let id = localStorage.getItem('bs_rider_id');
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem('bs_rider_id', id);
+  }
+  return id;
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(undefined); // undefined = loading
+  const uid = useMemo(loadOrCreateRiderId, []);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u ?? null));
-    return unsub;
-  }, []);
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem('bs_display_name') ?? '',
+  );
 
-  const loginWithGoogle = async () => {
-    if (Capacitor.isNativePlatform()) {
-      // Native path: uses Android Google Sign-In SDK, no browser redirect needed
-      const result = await FirebaseAuthentication.signInWithGoogle();
-      const credential = GoogleAuthProvider.credential(
-        result.credential?.idToken,
-        result.credential?.accessToken,
-      );
-      return signInWithCredential(auth, credential);
-    }
-    // Web path: popup works fine in a real browser
-    return signInWithPopup(auth, googleProvider);
+  const updateDisplayName = (name) => {
+    const trimmed = name.trim();
+    localStorage.setItem('bs_display_name', trimmed);
+    setDisplayName(trimmed);
   };
 
-  const loginWithEmail = (email, password) =>
-    signInWithEmailAndPassword(auth, email, password);
-
-  const signUpWithEmail = async (email, password, displayName) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName });
-    return cred;
-  };
-
-  const logout = () => signOut(auth);
+  // Shape compatible with Home.jsx (user.uid, user.displayName)
+  const user = { uid, displayName };
 
   return (
-    <AuthContext.Provider value={{ user, loginWithGoogle, loginWithEmail, signUpWithEmail, logout }}>
+    <AuthContext.Provider value={{ user, updateDisplayName }}>
       {children}
     </AuthContext.Provider>
   );
@@ -57,6 +46,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  if (!ctx) throw new Error('useAuth must be inside AuthProvider');
   return ctx;
 }

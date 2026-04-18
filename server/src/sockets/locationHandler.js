@@ -99,6 +99,15 @@ module.exports = (io, socket) => {
     console.log(`[Ride ${rideId}] Route shared by lead`);
   });
 
+  // Lead ending the ride for everyone
+  socket.on('ride:end', () => {
+    const { rideId, role } = socket.data ?? {};
+    if (!rideId || role !== 'lead') return;
+    io.to(rideId).emit('ride:ended');
+    rideRooms.delete(rideId);
+    console.log(`[Ride ${rideId}] Ended by lead`);
+  });
+
   socket.on('sos:resolve', () => {
     const { rideId } = socket.data ?? {};
     if (!rideId) return;

@@ -38,6 +38,17 @@ function reducer(state, action) {
       return { ...state, riders: [...state.riders, action.rider] };
     }
 
+    // Upsert from RTDB: add rider if not known, update presence fields if known
+    case 'RIDER_UPSERT': {
+      const exists = state.riders.some((r) => r.riderId === action.rider.riderId);
+      if (exists) {
+        return { ...state, riders: state.riders.map((r) =>
+          r.riderId === action.rider.riderId ? { ...r, ...action.rider } : r
+        )};
+      }
+      return { ...state, riders: [...state.riders, action.rider] };
+    }
+
     case 'RIDER_MOVED': {
       const { riderId, lat, lng } = action.update;
       const updated = state.riders.map((r) =>
@@ -64,15 +75,17 @@ function reducer(state, action) {
     case 'SELF_MOVED': {
       const selfId = state.selfRider?.riderId;
       const { lat, lng } = action.update;
+      const updatedSelf = { ...state.selfRider, ...action.update };
       const trails = selfId && lat != null
         ? { ...state.trails, [selfId]: [...(state.trails[selfId] ?? []), [lat, lng]].slice(-50) }
         : state.trails;
-      return {
-        ...state,
-        selfRider: { ...state.selfRider, ...action.update },
-        riders: state.riders.map((r) => r.riderId === selfId ? { ...r, ...action.update } : r),
-        trails,
-      };
+      // Upsert self into riders — riders starts empty until socket snapshot arrives,
+      // so we must add self here on first GPS tick (especially when server is offline).
+      const selfInRiders = state.riders.some((r) => r.riderId === selfId);
+      const riders = selfInRiders
+        ? state.riders.map((r) => r.riderId === selfId ? { ...r, ...action.update } : r)
+        : [...state.riders, updatedSelf];
+      return { ...state, selfRider: updatedSelf, riders, trails };
     }
 
     case 'CHAT_MESSAGE': {

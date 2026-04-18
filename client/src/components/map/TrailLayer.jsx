@@ -1,4 +1,4 @@
-import { Polyline } from '@react-google-maps/api';
+import { Polyline } from 'react-leaflet';
 
 const ROLE_COLORS = {
   lead:  '#FFE500',
@@ -16,22 +16,15 @@ export default function TrailLayer({ trails, riders, selfId }) {
           ? '#FFFFFF'
           : (ROLE_COLORS[rider?.role] ?? ROLE_COLORS.rider);
 
-        // Convert [lat,lng] arrays to { lat, lng } objects for Google Maps
-        const path = points.map(([lat, lng]) => ({ lat, lng }));
-
         return (
           <Polyline
             key={riderId}
-            path={path}
-            options={{
-              strokeColor:   color,
-              strokeWeight:  3,
-              strokeOpacity: 0.4,
-              icons: [{
-                icon:   { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
-                offset: '0',
-                repeat: '12px',
-              }],
+            positions={points}
+            pathOptions={{
+              color,
+              weight:    3,
+              opacity:   0.4,
+              dashArray: '6 8',
             }}
           />
         );

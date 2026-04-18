@@ -20,6 +20,22 @@ html, body {
   opacity: 0.4;
 }
 
+/* Rider name tooltip */
+.leaflet-rider-tooltip {
+  background: rgba(15,15,15,0.85) !important;
+  border: 1px solid rgba(255,255,255,0.15) !important;
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  padding: 2px 7px !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+.leaflet-rider-tooltip::before {
+  display: none !important;
+}
+
 /* Glove-friendly: minimum tap target 48px */
 button {
   min-width: 48px;

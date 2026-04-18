@@ -3,6 +3,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useRideContext } from '../../context/RideContext';
 import { webrtcMesh } from '../../services/webrtcMesh';
 import { wifiDirectMesh } from '../../services/wifiDirectMesh';
+import { publishChat } from '../../services/rtdbRide';
 
 const ROLE_COLORS = {
   lead:  'text-[#FFE500]',
@@ -38,7 +39,8 @@ export default function GroupChat({ onClose }) {
       });
     } else {
       const message = {
-        id: `${selfId}-${Date.now()}`,
+        id:          `${selfId}-${Date.now()}`,
+        senderId:    selfId,        // used by subscribeChat to filter echo
         riderId:     selfId,
         displayName: state.selfRider?.displayName,
         role:        state.selfRider?.role,
@@ -46,9 +48,12 @@ export default function GroupChat({ onClose }) {
         timestamp:   Date.now(),
       };
       dispatch({ type: 'CHAT_MESSAGE', message });
+      // Publish to RTDB so riders on other networks receive it
+      publishChat(state.rideId, message).catch(() => {});
+      // Also broadcast over WebRTC / WiFi Direct for zero-latency local delivery
       if (webrtcMesh.activePeerCount > 0) {
         webrtcMesh.broadcastChat(message);
-      } else {
+      } else if (wifiDirectMesh.peerCount > 0) {
         wifiDirectMesh.broadcastChat(message);
       }
     }

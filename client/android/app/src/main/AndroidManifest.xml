@@ -18,7 +18,8 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:exported="true">
+            android:exported="true"
+            android:supportsPictureInPicture="true">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -26,6 +27,12 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Foreground service that keeps GPS alive when screen is off -->
+        <service
+            android:name=".LocationService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -56,6 +63,16 @@
 
     <!-- Required for PTT push-to-talk voice recording -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Keeps CPU and screen awake during active ride -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Background location foreground service -->
+    <!-- FOREGROUND_SERVICE + foregroundServiceType="location" is sufficient —
+         the service notification keeps the process in "foreground" state, so
+         ACCESS_BACKGROUND_LOCATION is NOT needed (and would trigger Play Store review). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <uses-feature android:name="android.hardware.wifi.direct" android:required="true" />
 </manifest>

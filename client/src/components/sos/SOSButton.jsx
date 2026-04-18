@@ -3,6 +3,7 @@ import { socket } from '../../services/socket';
 import { useRideContext } from '../../context/RideContext';
 import { webrtcMesh } from '../../services/webrtcMesh';
 import { wifiDirectMesh } from '../../services/wifiDirectMesh';
+import { publishSOS } from '../../services/rtdbRide';
 import { api } from '../../services/api';
 
 export default function SOSButton() {
@@ -43,18 +44,20 @@ export default function SOSButton() {
             battery:     state.selfRider?.battery ?? null,
             timestamp:   Date.now(),
           };
+          // Always publish to RTDB so any rider on any network receives it
+          publishSOS(state.rideId, payload).catch(() => {});
+
           if (socket.connected) {
             socket.emit('sos:trigger', payload);
             try { await api.triggerSOS(payload); } catch {}
           } else if (webrtcMesh.activePeerCount > 0) {
-            // Tier 2: WebRTC DataChannel mesh
+            // Tier 2: WebRTC DataChannel mesh (low-latency local delivery)
             webrtcMesh.broadcastSOS(payload);
-            dispatch({ type: 'SOS_RECEIVED', payload });
-          } else {
+          } else if (wifiDirectMesh.peerCount > 0) {
             // Tier 3: WiFi Direct TCP mesh
             wifiDirectMesh.broadcastSOS(payload);
-            dispatch({ type: 'SOS_RECEIVED', payload });
           }
+          dispatch({ type: 'SOS_RECEIVED', payload });
           setStatus('sent');
         },
         () => cancelHold()

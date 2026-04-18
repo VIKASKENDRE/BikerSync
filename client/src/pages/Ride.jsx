@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRideContext } from '../context/RideContext';
 import { socket } from '../services/socket';
@@ -39,6 +39,28 @@ export default function Ride() {
 
     return () => socket.off('connect', rejoin);
   }, [state.rideId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Screen Wake Lock — keeps display on while riding ─────────────────────
+  const wakeLockRef = useRef(null);
+  useEffect(() => {
+    if (!state.rideId) return;
+    const acquire = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+        }
+      } catch {}
+    };
+    acquire();
+    // Re-acquire after the page becomes visible again (required by spec)
+    const onVisible = () => { if (document.visibilityState === 'visible') acquire(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [state.rideId]);
 
   if (!state.rideId) return null;
 

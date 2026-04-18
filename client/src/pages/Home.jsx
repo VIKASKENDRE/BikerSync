@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRideContext } from '../context/RideContext';
 import { useAuth } from '../context/AuthContext';
-import { useAdmin } from '../hooks/useAdmin';
 import { useGPS } from '../hooks/useGPS';
 import { socket } from '../services/socket';
 import { api } from '../services/api';
@@ -12,42 +11,27 @@ const ROLES = ['rider', 'sweep'];
 export default function Home() {
   const navigate = useNavigate();
   const { dispatch } = useRideContext();
-  const { user, logout } = useAuth();
-  const { isAdmin } = useAdmin();
+  const { user, updateDisplayName } = useAuth();
   const { status: gpsStatus, requestGPS } = useGPS();
 
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState(searchParams.get('join') ? 'join' : 'join');
+  const [tab, setTab] = useState('join');
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [rideId, setRideId]   = useState(searchParams.get('join') ?? '');
   const [rideName, setRideName] = useState('');
   const [role, setRole]       = useState('rider');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
-  const [shareInfo, setShareInfo] = useState(null); // { rideId, url } after creating
+  const [shareInfo, setShareInfo] = useState(null);
   const [copied, setCopied]   = useState(false);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [socketError, setSocketError] = useState('');
 
-  // Track socket connection for diagnostic pill
-  useEffect(() => {
-    const onConnect    = () => { setSocketConnected(true); setSocketError(''); };
-    const onDisconnect = (reason) => { setSocketConnected(false); setSocketError(reason ?? ''); };
-    const onError      = (err) => { setSocketConnected(false); setSocketError(err?.message ?? String(err)); };
-    socket.on('connect',       onConnect);
-    socket.on('disconnect',    onDisconnect);
-    socket.on('connect_error', onError);
-    socket.connect();
-    setSocketConnected(socket.connected);
-    return () => {
-      socket.off('connect',       onConnect);
-      socket.off('disconnect',    onDisconnect);
-      socket.off('connect_error', onError);
-    };
-  }, []);
+  // Stable riderId from localStorage (set once at install, never changes)
+  const riderId = user.uid;
 
-  // Use Firebase UID as stable riderId — consistent across devices
-  const riderId = user?.uid ?? crypto.randomUUID();
+  const saveName = (name) => {
+    setDisplayName(name);
+    if (name.trim()) updateDisplayName(name);
+  };
 
   async function handleJoin() {
     setError('');
@@ -59,9 +43,10 @@ export default function Home() {
     if (!gpsOk) { setLoading(false); return setError('GPS permission is required'); }
 
     try {
-      await api.joinRide(rideId.toUpperCase(), riderId, displayName.trim(), role);
+      await api.joinRide(rideId.toUpperCase(), riderId, displayName.trim(), role)
+        .catch(() => {});
 
-      socket.connect(); // start connecting early; ride:join is emitted by Ride.jsx
+      socket.connect();
 
       dispatch({
         type: 'JOIN_RIDE',
@@ -87,10 +72,17 @@ export default function Home() {
     if (!gpsOk) { setLoading(false); return setError('GPS permission is required'); }
 
     try {
-      const { rideId: newId } = await api.createRide(rideName.trim(), riderId, displayName.trim());
+      let newId;
+      try {
+        const data = await api.createRide(rideName.trim(), riderId, displayName.trim());
+        newId = data.rideId;
+      } catch {
+        newId = Math.random().toString(36).slice(2, 6).toUpperCase() +
+                Math.random().toString(36).slice(2, 6).toUpperCase();
+      }
       const shareUrl = `${window.location.origin}/?join=${newId}`;
 
-      socket.connect(); // start connecting early; ride:join is emitted by Ride.jsx
+      socket.connect();
 
       dispatch({
         type: 'JOIN_RIDE',
@@ -98,7 +90,6 @@ export default function Home() {
         selfRider: { riderId, displayName: displayName.trim(), role: 'lead', lat: null, lng: null, speed: 0 },
       });
 
-      // Show share panel before navigating to map
       setShareInfo({ rideId: newId, url: shareUrl });
     } catch (err) {
       setError(err.message);
@@ -111,26 +102,13 @@ export default function Home() {
     <div className="min-h-dvh bg-[#0F0F0F] flex flex-col items-center justify-center px-6 overflow-y-auto
                     pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
 
-      {/* Logo + user info */}
+      {/* Logo */}
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-black text-[#FFE500] tracking-tight">BikerSync</h1>
         <p className="text-gray-400 text-sm mt-1">Stay together. Ride safe.</p>
-        <div className="mt-2 flex flex-col items-center gap-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className={`inline-block w-2 h-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-red-500'}`} />
-            <span className={`text-xs font-mono ${socketConnected ? 'text-green-400' : 'text-red-400'}`}>
-              {socketConnected ? 'Server: Connected' : 'Server: Offline'}
-            </span>
-          </div>
-          {!socketConnected && socketError ? (
-            <span className="text-[10px] text-gray-500 font-mono max-w-[280px] text-center leading-tight">
-              {socketError}
-            </span>
-          ) : null}
-        </div>
       </div>
 
-      {/* SHARE PANEL — shown after creating a ride */}
+      {/* Share panel — shown after creating a ride */}
       {shareInfo && (
         <div className="w-full max-w-sm mb-4 bg-[#1A1A1A] border border-[#FFE500]/30 rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3">
@@ -141,7 +119,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Ride ID pill */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-gray-400 text-xs">Ride ID</span>
             <span className="font-mono font-black text-[#FFE500] text-lg tracking-widest">
@@ -149,7 +126,6 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Link box */}
           <div className="flex items-center gap-2 bg-[#0F0F0F] rounded-xl px-3 py-2 mb-3">
             <span className="text-gray-400 text-xs truncate flex-1">{shareInfo.url}</span>
           </div>
@@ -183,36 +159,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Logged-in user bar */}
-      <div className="w-full max-w-sm flex items-center justify-between mb-3 px-1">
-        <button className="flex items-center gap-2" onClick={() => navigate('/profile')}>
-          {user?.photoURL
-            ? <img src={user.photoURL} alt="" className="w-7 h-7 rounded-full" />
-            : <div className="w-7 h-7 rounded-full bg-[#1A1A1A] border border-[#2A2A2A] flex items-center justify-center text-xs text-[#FFE500] font-black">
-                {(user?.displayName ?? '?')[0]?.toUpperCase()}
-              </div>
-          }
-          <span className="text-gray-400 text-sm truncate max-w-[140px]">
-            {user?.displayName ?? user?.email}
-          </span>
-        </button>
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/feed')}
-            className="text-gray-400 text-xs font-bold hover:text-white">
-            Feed
-          </button>
-          {isAdmin && (
-            <button onClick={() => navigate('/admin')}
-              className="text-[#FFE500] text-xs font-bold hover:text-[#FFE500]/80">
-              Admin
-            </button>
-          )}
-          <button onClick={logout} className="text-gray-600 text-xs hover:text-gray-400">
-            Sign out
-          </button>
-        </div>
-      </div>
-
       {/* Card */}
       <div className="w-full max-w-sm bg-[#1A1A1A] border border-[#2A2A2A] rounded-2xl overflow-hidden">
         <div className="flex border-b border-[#2A2A2A]">
@@ -233,7 +179,7 @@ export default function Home() {
             <label className="text-xs text-gray-400 uppercase tracking-wider">Your Name</label>
             <input
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              onChange={(e) => saveName(e.target.value)}
               placeholder="e.g. Raj Kumar"
               style={{ fontSize: 16 }}
               className="mt-1 w-full bg-[#2A2A2A] text-white rounded-xl px-4 py-3
@@ -314,7 +260,7 @@ export default function Home() {
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
           {gpsStatus === 'denied' && (
             <p className="text-[#FF6B00] text-xs text-center">
-              GPS blocked. Enable in browser Settings → Site Settings → Location.
+              GPS blocked. Enable in Settings → Location.
             </p>
           )}
         </div>
@@ -333,7 +279,6 @@ async function copyLink(url, setCopied) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   } catch {
-    // Fallback for browsers that block clipboard API
     const el = document.createElement('textarea');
     el.value = url;
     document.body.appendChild(el);
