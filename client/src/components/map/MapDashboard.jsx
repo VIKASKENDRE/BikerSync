@@ -7,7 +7,6 @@ import { deleteRide } from '../../services/rtdbRide';
 import RiderMarker from './RiderMarker';
 import RouteLayer from './RouteLayer';
 import TrailLayer from './TrailLayer';
-import HotspotBanner from './HotspotBanner';
 import SOSButton from '../sos/SOSButton';
 import PushToTalk from '../comms/PushToTalk';
 import GroupChat from '../comms/GroupChat';
@@ -32,7 +31,7 @@ function MapController({ selfRider, mapRef }) {
 
 export default function MapDashboard() {
   const {
-    riders, selfRider, unreadCount,
+    riders, selfRider, unreadCount, messages,
     p2pPeers, p2pConnecting, wdPeers,
     rideId, sharedRoute, trails, dispatch,
   } = useRideSession();
@@ -43,7 +42,8 @@ export default function MapDashboard() {
   const [riderListOpen, setRiderListOpen] = useState(false);
   const [confirmExit,   setConfirmExit]   = useState(false);
   const [rideCopied,    setRideCopied]    = useState(false);
-  const [wdToast,       setWdToast]       = useState('');
+  const [wdModalOpen,   setWdModalOpen]   = useState(false);
+  const [wdCopied,      setWdCopied]      = useState(''); // 'ssid' | 'pass' | ''
   const [wdGroupSsid,   setWdGroupSsid]   = useState(() => wifiDirectMesh.groupSsid);
   const [wdGroupPass,   setWdGroupPass]   = useState(() => wifiDirectMesh.groupPassphrase);
   const [isPiP,         setIsPiP]         = useState(false);
@@ -51,7 +51,7 @@ export default function MapDashboard() {
   // If true, tapping Navigate again just re-enters PiP without opening a new intent
   // (which would interrupt the ongoing turn-by-turn navigation).
   const [isNavigating,  setIsNavigating]  = useState(false);
-  const prevWdPeers = useRef(0);
+  const prevMsgCount = useRef(messages?.length ?? 0);
 
   useEffect(() => {
     wifiDirectMesh.onGroupReady = (ssid, pass) => { setWdGroupSsid(ssid); setWdGroupPass(pass); };
@@ -65,14 +65,15 @@ export default function MapDashboard() {
     }
   }, [rideId, selfRider?.role]);
 
+  // Play a soft chime when a message from another rider arrives
   useEffect(() => {
-    if (wdPeers > prevWdPeers.current) {
-      setWdToast(`📡 ${wdPeers} rider${wdPeers !== 1 ? 's' : ''} connected via WiFi Direct`);
-      const t = setTimeout(() => setWdToast(''), 3500);
-      return () => clearTimeout(t);
+    const count = messages?.length ?? 0;
+    if (count > prevMsgCount.current) {
+      const last = messages[count - 1];
+      if (last?.riderId !== selfRider?.riderId) playChime();
     }
-    prevWdPeers.current = wdPeers;
-  }, [wdPeers]);
+    prevMsgCount.current = count;
+  }, [messages]); // eslint-disable-line
 
   // Subscribe to PiP mode changes from the native layer
   useEffect(() => {
@@ -84,6 +85,12 @@ export default function MapDashboard() {
     try { await navigator.clipboard.writeText(rideId ?? ''); } catch {}
     setRideCopied(true);
     setTimeout(() => setRideCopied(false), 2000);
+  };
+
+  const copyWd = async (text, key) => {
+    try { await navigator.clipboard.writeText(text); } catch {}
+    setWdCopied(key);
+    setTimeout(() => setWdCopied(''), 2000);
   };
 
   const recenter = () => {
@@ -211,12 +218,19 @@ export default function MapDashboard() {
                     {p2pPeers > 0 ? `P2P·${p2pPeers}` : 'P2P…'}
                   </span>
                 )}
-                {wdPeers > 0 && (
-                  <span className="px-2.5 py-1 text-xs font-bold rounded-full whitespace-nowrap
-                    bg-blue-500/20 border border-blue-500/40 text-blue-400">
-                    WD·{wdPeers}
-                  </span>
-                )}
+
+                {/* Wi-Di pill — always visible; orange = waiting, blue = connected */}
+                <button
+                  onClick={() => setWdModalOpen(true)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full
+                              whitespace-nowrap active:scale-95 transition-transform
+                              ${wdPeers > 0
+                                ? 'bg-blue-500/20 border border-blue-500/40 text-blue-400'
+                                : 'bg-[#FF6B00]/20 border border-[#FF6B00]/40 text-[#FF6B00]'}`}
+                >
+                  <span>📡</span>
+                  <span>{wdPeers > 0 ? `Wi-Di·${wdPeers}` : 'Wi-Di'}</span>
+                </button>
               </div>
 
               <div className="shrink-0"><SOSButton /></div>
@@ -257,24 +271,89 @@ export default function MapDashboard() {
             </div>
           </div>
 
-          {/* ── WD TOAST ──────────────────────────────────────────────── */}
-          {wdToast && (
-            <div className="absolute top-[7rem] left-1/2 -translate-x-1/2
-                            px-4 py-2 bg-blue-600/90 backdrop-blur-sm rounded-full
-                            text-white text-xs font-bold whitespace-nowrap shadow-lg
-                            pointer-events-none"
-                 style={Z_OVER}>
-              {wdToast}
+          {/* ── WI-DI MODAL ───────────────────────────────────────────── */}
+          {wdModalOpen && (
+            <div
+              className="absolute inset-0 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+              style={Z_TOP}
+              onClick={() => setWdModalOpen(false)}
+            >
+              <div
+                className="w-full max-w-sm mx-3 mb-6 bg-[#1A1A1A] border rounded-3xl overflow-hidden
+                           shadow-2xl"
+                style={{ borderColor: wdPeers > 0 ? 'rgba(59,130,246,0.4)' : 'rgba(255,107,0,0.4)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[#2A2A2A]">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0
+                      ${wdPeers > 0 ? 'bg-blue-400' : 'bg-[#FF6B00] animate-pulse'}`} />
+                    <span className={`font-bold text-sm
+                      ${wdPeers > 0 ? 'text-blue-300' : 'text-[#FF6B00]'}`}>
+                      {wdPeers > 0
+                        ? `WiFi Direct · ${wdPeers} rider${wdPeers !== 1 ? 's' : ''} connected`
+                        : 'WiFi Direct · waiting for riders'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setWdModalOpen(false)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full
+                               bg-[#2A2A2A] text-gray-400 text-sm active:scale-90 transition-transform"
+                  >✕</button>
+                </div>
+
+                {/* Credentials */}
+                {wdGroupSsid && (
+                  <div className="px-5 py-4 space-y-3">
+                    <p className="text-gray-400 text-xs">
+                      {selfRider?.role === 'lead'
+                        ? 'Tell riders to connect to this WiFi network:'
+                        : 'Connect to this WiFi network (Settings → WiFi):'}
+                    </p>
+
+                    <div className="flex items-center justify-between bg-black/40 rounded-2xl px-4 py-3">
+                      <div>
+                        <span className="text-gray-500 text-xs block mb-0.5">Network name</span>
+                        <span className="text-white font-mono font-bold text-sm">{wdGroupSsid}</span>
+                      </div>
+                      <button
+                        onClick={() => copyWd(wdGroupSsid, 'ssid')}
+                        className="ml-3 px-3 py-1.5 bg-white/10 rounded-xl text-xs text-gray-300
+                                   active:scale-95 transition-transform shrink-0"
+                      >{wdCopied === 'ssid' ? '✓' : 'Copy'}</button>
+                    </div>
+
+                    {wdGroupPass && (
+                      <div className="flex items-center justify-between bg-black/40 rounded-2xl px-4 py-3">
+                        <div>
+                          <span className="text-gray-500 text-xs block mb-0.5">Password</span>
+                          <span className="text-white font-mono font-bold text-sm">{wdGroupPass}</span>
+                        </div>
+                        <button
+                          onClick={() => copyWd(wdGroupPass, 'pass')}
+                          className="ml-3 px-3 py-1.5 bg-white/10 rounded-xl text-xs text-gray-300
+                                     active:scale-95 transition-transform shrink-0"
+                        >{wdCopied === 'pass' ? '✓' : 'Copy'}</button>
+                      </div>
+                    )}
+
+                    {selfRider?.role !== 'lead' && (
+                      <p className="text-gray-500 text-xs">
+                        After connecting, the app links automatically.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {!wdGroupSsid && (
+                  <p className="px-5 py-4 text-gray-500 text-sm">
+                    WiFi Direct group not ready yet — stay on this screen.
+                  </p>
+                )}
+              </div>
             </div>
           )}
-
-          {/* ── OFFLINE BANNER ────────────────────────────────────────── */}
-          <HotspotBanner
-            wdPeers={wdPeers}
-            wdGroupSsid={wdGroupSsid}
-            wdGroupPass={wdGroupPass}
-            isLead={selfRider?.role === 'lead'}
-          />
 
           {/* ── RIDER LIST ────────────────────────────────────────────── */}
           {riderListOpen && (
@@ -416,6 +495,24 @@ export default function MapDashboard() {
 
     </div>
   );
+}
+
+function playChime() {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+    osc.onended = () => ctx.close();
+  } catch {}
 }
 
 function RoleBadge({ role }) {
