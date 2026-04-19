@@ -138,25 +138,36 @@ export default function PushToTalk() {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <button
-        onPointerDown={startTalk}
-        onPointerUp={stopTalk}
-        onPointerLeave={stopTalk}
-        className={`w-20 h-20 rounded-full font-bold text-sm border-2 select-none
-                    transition-all duration-100 flex flex-col items-center justify-center gap-1
-                    ${micError
-                      ? 'bg-[#2A2A2A] border-red-500/60 text-red-400'
-                      : transmitting
-                      ? 'bg-[#FF6B00] border-[#FF6B00] text-black scale-110 shadow-[0_0_24px_rgba(255,107,0,0.7)]'
-                      : 'bg-[#2A2A2A] border-[#2A2A2A] text-white'
-                    }`}
-        aria-label="Push to talk"
-      >
-        <span className="text-xl">{micError ? '🚫' : transmitting ? '🔴' : '🎙'}</span>
-        <span className="text-xs leading-tight text-center px-1">
-          {micError ? micError : transmitting ? 'LIVE' : 'TALK'}
-        </span>
-      </button>
+      <div className="flex items-center gap-2">
+        {/* Close-channel button — appears when mic is live */}
+        {transmitting && (
+          <button
+            onClick={stopTalk}
+            className="w-10 h-10 rounded-full bg-red-700 border border-red-500/60
+                       flex items-center justify-center text-white text-sm font-black
+                       active:scale-95 transition-transform shadow-lg"
+            aria-label="Close voice channel"
+          >✕</button>
+        )}
+
+        <button
+          onClick={transmitting ? stopTalk : startTalk}
+          className={`w-20 h-20 rounded-full font-bold text-sm border-2 select-none
+                      transition-all duration-100 flex flex-col items-center justify-center gap-1
+                      ${micError
+                        ? 'bg-[#2A2A2A] border-red-500/60 text-red-400'
+                        : transmitting
+                        ? 'bg-[#FF6B00] border-[#FF6B00] text-black scale-110 shadow-[0_0_24px_rgba(255,107,0,0.7)]'
+                        : 'bg-[#2A2A2A] border-[#2A2A2A] text-white'
+                      }`}
+          aria-label={transmitting ? 'Channel open — tap X to close' : 'Open voice channel'}
+        >
+          <span className="text-xl">{micError ? '🚫' : transmitting ? '🔴' : '🎙'}</span>
+          <span className="text-xs leading-tight text-center px-1">
+            {micError ? micError : transmitting ? 'LIVE' : 'TALK'}
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
