@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { socket } from '../../services/socket';
 import { webrtcMesh } from '../../services/webrtcMesh';
@@ -10,6 +10,8 @@ const IS_NATIVE = Capacitor.isNativePlatform();
 
 export default function PushToTalk() {
   const [transmitting, setTransmitting] = useState(false);
+  const [inChannel,    setInChannel]    = useState(false);
+  const [talker,       setTalker]       = useState(null); // displayName of who's currently talking
   const [micError,     setMicError]     = useState('');
 
   // Native path refs
@@ -20,6 +22,23 @@ export default function PushToTalk() {
   const mediaRef    = useRef(null);
   const recorderRef = useRef(null);
   const webBusy     = useRef(false);
+
+  // Group channel events — server opens channel for all when any rider transmits
+  useEffect(() => {
+    const onChannelOpen = () => setInChannel(true);
+    const onIncoming    = ({ displayName }) => setTalker(displayName);
+    const onEnded       = () => setTalker(null);
+
+    socket.on('voice:channel:open', onChannelOpen);
+    socket.on('voice:incoming',     onIncoming);
+    socket.on('voice:ended',        onEnded);
+
+    return () => {
+      socket.off('voice:channel:open', onChannelOpen);
+      socket.off('voice:incoming',     onIncoming);
+      socket.off('voice:ended',        onEnded);
+    };
+  }, []);
 
   // ── Native PTT (Android APK — uses AudioRecord directly) ─────────────────
   const startNative = async () => {
@@ -134,33 +153,47 @@ export default function PushToTalk() {
   };
 
   const startTalk = IS_NATIVE ? startNative : startWeb;
-  const stopTalk  = IS_NATIVE ? stopNative  : stopWeb;
+
+  // X when transmitting → mute yourself (stop mic, stay in channel)
+  const muteSelf = IS_NATIVE ? stopNative : stopWeb;
+
+  // X when in channel but not transmitting → leave channel (hides UI for this rider)
+  const leaveChannel = () => setInChannel(false);
 
   return (
     <div className="flex flex-col items-center gap-1">
+      {/* Channel status bar — visible to all riders while channel is open */}
+      {inChannel && (
+        <div className="text-xs font-semibold text-[#FF6B00] tracking-wide">
+          {talker ? `🔊 ${talker}` : '● CHANNEL LIVE'}
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
-        {/* Close-channel button — appears when mic is live */}
-        {transmitting && (
+        {/* X: mute if transmitting, leave channel if listening */}
+        {inChannel && (
           <button
-            onClick={stopTalk}
+            onClick={transmitting ? muteSelf : leaveChannel}
             className="w-10 h-10 rounded-full bg-red-700 border border-red-500/60
                        flex items-center justify-center text-white text-sm font-black
                        active:scale-95 transition-transform shadow-lg"
-            aria-label="Close voice channel"
+            aria-label={transmitting ? 'Mute microphone' : 'Leave voice channel'}
           >✕</button>
         )}
 
         <button
-          onClick={transmitting ? stopTalk : startTalk}
+          onClick={transmitting ? muteSelf : startTalk}
           className={`w-20 h-20 rounded-full font-bold text-sm border-2 select-none
                       transition-all duration-100 flex flex-col items-center justify-center gap-1
                       ${micError
                         ? 'bg-[#2A2A2A] border-red-500/60 text-red-400'
                         : transmitting
                         ? 'bg-[#FF6B00] border-[#FF6B00] text-black scale-110 shadow-[0_0_24px_rgba(255,107,0,0.7)]'
+                        : inChannel
+                        ? 'bg-[#2A2A2A] border-[#FF6B00]/60 text-[#FF6B00]'
                         : 'bg-[#2A2A2A] border-[#2A2A2A] text-white'
                       }`}
-          aria-label={transmitting ? 'Channel open — tap X to close' : 'Open voice channel'}
+          aria-label={transmitting ? 'Mute microphone' : inChannel ? 'Tap to talk' : 'Open voice channel'}
         >
           <span className="text-xl">{micError ? '🚫' : transmitting ? '🔴' : '🎙'}</span>
           <span className="text-xs leading-tight text-center px-1">

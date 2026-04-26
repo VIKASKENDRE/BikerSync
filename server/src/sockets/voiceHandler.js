@@ -7,6 +7,8 @@ module.exports = (io, socket) => {
       return;
     }
     console.log(`[Voice] ${displayName} started PTT in ride ${rideId} (${mimeType})`);
+    // Open channel for the whole group (sender included) so all UIs update
+    io.to(rideId).emit('voice:channel:open');
     socket.to(rideId).emit('voice:incoming', { riderId, displayName, mimeType });
   });
 

@@ -13,72 +13,120 @@ async function getAudioCtx() {
 
 export function unlockAudio() { getAudioCtx(); }
 
-// Play a Blob of compressed audio (WebM/Opus from browser MediaRecorder)
-async function playBlob(blob) {
-  const ctx = await getAudioCtx();
-  try {
-    const buf     = await blob.arrayBuffer();
-    const decoded = await ctx.decodeAudioData(buf);
-    const src     = ctx.createBufferSource();
-    src.buffer    = decoded;
-    src.connect(ctx.destination);
-    src.start(0);
-    return;
-  } catch {}
-  // Fallback: HTMLAudioElement through AudioContext
-  try {
-    const url   = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.crossOrigin = 'anonymous';
-    const mediaSrc = ctx.createMediaElementSource(audio);
-    mediaSrc.connect(ctx.destination);
-    await audio.play();
-    audio.onended = () => URL.revokeObjectURL(url);
-  } catch (err) {
-    console.warn('[Voice] Blob playback failed:', err.message);
+// ── PCM16 streaming (native Android path) ────────────────────────────────────
+// Each base64 chunk is raw 16-bit signed PCM @ 16 kHz mono — independently
+// decodable, so we schedule them back-to-back on the AudioContext timeline.
+class PCM16Stream {
+  constructor() {
+    this.nextTime = 0;
   }
-}
 
-// Play accumulated base64 PCM16 chunks (from native VoicePlugin @ 16 kHz mono)
-async function playPCM16Chunks(b64Chunks) {
-  if (b64Chunks.length === 0) return;
-  try {
+  async push(b64) {
     const ctx = await getAudioCtx();
-
-    // Decode all base64 chunks into a single Int16 buffer
-    let totalSamples = 0;
-    const int16Arrays = b64Chunks.map((b64) => {
+    try {
       const raw   = atob(b64);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
       const i16 = new Int16Array(bytes.buffer);
-      totalSamples += i16.length;
-      return i16;
-    });
+      const f32 = new Float32Array(i16.length);
+      for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
 
-    const float32 = new Float32Array(totalSamples);
-    let offset = 0;
-    for (const i16 of int16Arrays) {
-      for (let i = 0; i < i16.length; i++) {
-        float32[offset++] = i16[i] / 32768;
-      }
+      const buf = ctx.createBuffer(1, f32.length, 16000);
+      buf.copyToChannel(f32, 0);
+
+      const now = ctx.currentTime;
+      // Re-sync queue if we've fallen behind (gap, first chunk, or late arrival)
+      if (this.nextTime < now + 0.02) this.nextTime = now + 0.06;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(this.nextTime);
+      this.nextTime += buf.duration;
+    } catch (e) {
+      console.warn('[Voice] PCM16 chunk error:', e.message);
     }
-
-    const buffer = ctx.createBuffer(1, float32.length, 16000);
-    buffer.copyToChannel(float32, 0);
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.connect(ctx.destination);
-    src.start(0);
-  } catch (err) {
-    console.warn('[Voice] PCM playback failed:', err.message);
   }
 }
 
+// ── WebM/Opus streaming (browser path) ───────────────────────────────────────
+// MediaRecorder chunks are appended in order to a MediaSource SourceBuffer,
+// giving true real-time playback. Falls back to accumulate-and-play on errors.
+class WebMStream {
+  constructor(mimeType) {
+    this.mimeType      = mimeType;
+    this.ms            = new MediaSource();
+    this.audio         = new Audio();
+    this.audio.src     = URL.createObjectURL(this.ms);
+    this.sb            = null;
+    this.pending       = [];   // chunks waiting for sourceopen / updateend
+    this.ready         = false;
+    this.failed        = false;
+    this.fallback      = [];   // accumulate raw for fallback playback
+
+    this.ms.addEventListener('sourceopen', () => {
+      try {
+        this.sb = this.ms.addSourceBuffer(mimeType);
+        this.sb.mode = 'sequence';
+        this.sb.addEventListener('updateend', () => this._drain());
+        this.ready = true;
+        this._drain();
+      } catch (e) {
+        console.warn('[Voice] MSE init failed:', e.message);
+        this.failed = true;
+      }
+    }, { once: true });
+  }
+
+  push(arrayBuffer) {
+    this.fallback.push(arrayBuffer);
+    if (this.failed) return;
+    this.pending.push(arrayBuffer);
+    if (this.ready && !this.sb.updating) this._drain();
+    if (this.audio.paused) this.audio.play().catch(() => {});
+  }
+
+  _drain() {
+    if (!this.ready || this.sb.updating || this.pending.length === 0) return;
+    try {
+      this.sb.appendBuffer(this.pending.shift());
+    } catch (e) {
+      console.warn('[Voice] MSE append error:', e.message);
+      this.failed = true;
+    }
+  }
+
+  async playFallback() {
+    if (this.fallback.length === 0) return;
+    const ctx  = await getAudioCtx();
+    const blob = new Blob(this.fallback.map((ab) => new Blob([ab])), { type: this.mimeType });
+    try {
+      const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+      const src     = ctx.createBufferSource();
+      src.buffer    = decoded;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {}
+  }
+
+  destroy() {
+    try { if (this.ms.readyState === 'open') this.ms.endOfStream(); } catch {}
+    URL.revokeObjectURL(this.audio.src);
+  }
+}
+
+const MSE_SUPPORTED = typeof MediaSource !== 'undefined';
+
+// Normalise any binary payload to ArrayBuffer
+async function toArrayBuffer(chunk) {
+  if (chunk instanceof ArrayBuffer)  return chunk;
+  if (ArrayBuffer.isView(chunk))     return chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+  if (chunk instanceof Blob)         return chunk.arrayBuffer();
+  return null;
+}
+
 export function useVoicePlayback() {
-  const blobChunksRef = useRef({}); // riderId → Blob[]
-  const pcmChunksRef  = useRef({}); // riderId → string[] (base64)
-  const mimeTypeRef   = useRef({}); // riderId → string
+  // riderId → { stream: PCM16Stream | WebMStream, isPCM16: bool, mimeType: string }
+  const sendersRef = useRef({});
 
   useEffect(() => {
     const unlock = () => unlockAudio();
@@ -91,37 +139,42 @@ export function useVoicePlayback() {
   }, []);
 
   useEffect(() => {
-    const onIncoming = ({ riderId, mimeType }) => {
-      blobChunksRef.current[riderId] = [];
-      pcmChunksRef.current[riderId]  = [];
-      mimeTypeRef.current[riderId]   = mimeType || 'audio/webm';
+    const onIncoming = ({ riderId, mimeType = 'audio/webm' }) => {
+      // Clean up any existing stream for this sender
+      const prev = sendersRef.current[riderId];
+      if (prev) { prev.stream?.destroy?.(); }
+
+      const isPCM16  = mimeType.startsWith('audio/pcm16');
+      const stream   = isPCM16
+        ? new PCM16Stream()
+        : (MSE_SUPPORTED ? new WebMStream(mimeType) : null);
+
+      sendersRef.current[riderId] = { stream, isPCM16, mimeType };
     };
 
-    const onChunk = ({ riderId, chunk }) => {
-      if (typeof chunk === 'string') {
-        // Native path: base64-encoded PCM16 from VoicePlugin
-        if (!pcmChunksRef.current[riderId]) pcmChunksRef.current[riderId] = [];
-        pcmChunksRef.current[riderId].push(chunk);
+    const onChunk = async ({ riderId, chunk }) => {
+      const sender = sendersRef.current[riderId];
+      if (!sender || !sender.stream) return;
+
+      if (sender.isPCM16) {
+        // Native path: chunk is a base64 string
+        if (typeof chunk === 'string') await sender.stream.push(chunk);
       } else {
-        // Browser path: binary blob from MediaRecorder
-        if (!blobChunksRef.current[riderId]) blobChunksRef.current[riderId] = [];
-        blobChunksRef.current[riderId].push(new Blob([chunk]));
+        // Browser path: chunk is binary (ArrayBuffer / Uint8Array / Blob)
+        const ab = await toArrayBuffer(chunk);
+        if (ab) sender.stream.push(ab);
       }
     };
 
-    const onEnded = ({ riderId }) => {
-      const pcm      = pcmChunksRef.current[riderId]  ?? [];
-      const blobs    = blobChunksRef.current[riderId] ?? [];
-      const mimeType = mimeTypeRef.current[riderId]   ?? 'audio/webm';
-      delete pcmChunksRef.current[riderId];
-      delete blobChunksRef.current[riderId];
-      delete mimeTypeRef.current[riderId];
+    const onEnded = async ({ riderId }) => {
+      const sender = sendersRef.current[riderId];
+      if (!sender) return;
 
-      if (pcm.length > 0) {
-        playPCM16Chunks(pcm);
-      } else if (blobs.length > 0) {
-        playBlob(new Blob(blobs, { type: mimeType }));
+      if (!sender.isPCM16 && sender.stream instanceof WebMStream) {
+        if (sender.stream.failed) await sender.stream.playFallback();
+        sender.stream.destroy();
       }
+      delete sendersRef.current[riderId];
     };
 
     socket.on('voice:incoming', onIncoming);
@@ -132,7 +185,6 @@ export function useVoicePlayback() {
     webrtcMesh.onVoiceChunk = (riderId, buffer)   => onChunk({ riderId, chunk: buffer });
     webrtcMesh.onVoiceEnd   = (riderId)            => onEnded({ riderId });
 
-    // WiFi Direct path — PCM16 chunks arrive as base64 strings
     wifiDirectMesh.onVoiceStart = (riderId, mimeType) => onIncoming({ riderId, mimeType });
     wifiDirectMesh.onVoiceChunk = (riderId, b64)      => onChunk({ riderId, chunk: b64 });
     wifiDirectMesh.onVoiceEnd   = (riderId)            => onEnded({ riderId });
