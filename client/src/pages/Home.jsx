@@ -80,7 +80,7 @@ export default function Home() {
         newId = Math.random().toString(36).slice(2, 6).toUpperCase() +
                 Math.random().toString(36).slice(2, 6).toUpperCase();
       }
-      const shareUrl = `${window.location.origin}/?join=${newId}`;
+      const shareUrl = `/?join=${newId}`;
 
       socket.connect();
 
@@ -115,7 +115,7 @@ export default function Home() {
             <span className="text-[#FFE500] text-lg">🏍</span>
             <div>
               <p className="text-white font-bold text-sm">Ride Created!</p>
-              <p className="text-gray-400 text-xs">Share the link with your group</p>
+              <p className="text-gray-400 text-xs">Share the Ride ID with your group</p>
             </div>
           </div>
 
@@ -126,21 +126,17 @@ export default function Home() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 bg-[#0F0F0F] rounded-xl px-3 py-2 mb-3">
-            <span className="text-gray-400 text-xs truncate flex-1">{shareInfo.url}</span>
-          </div>
-
           <div className="flex gap-2">
             <button
-              onClick={() => copyLink(shareInfo.url, setCopied)}
+              onClick={() => copyLink(shareInfo.rideId, setCopied)}
               className="flex-1 py-2.5 bg-[#2A2A2A] text-white text-sm font-bold rounded-xl
                          active:scale-95 transition-transform"
             >
-              {copied ? '✓ Copied!' : '📋 Copy Link'}
+              {copied ? '✓ Copied!' : '📋 Copy ID'}
             </button>
             {'share' in navigator && (
               <button
-                onClick={() => nativeShare(shareInfo.rideId, shareInfo.url)}
+                onClick={() => nativeShare(shareInfo.rideId)}
                 className="flex-1 py-2.5 bg-[#FFE500] text-black text-sm font-bold rounded-xl
                            active:scale-95 transition-transform"
               >
@@ -267,7 +263,7 @@ export default function Home() {
       </div>
 
       <p className="mt-6 text-gray-600 text-xs text-center">
-        Keep app open during ride · HTTPS required for GPS
+        Keep app open during ride
       </p>
     </div>
   );
@@ -290,10 +286,9 @@ async function copyLink(url, setCopied) {
   }
 }
 
-function nativeShare(rideId, url) {
+function nativeShare(rideId) {
   navigator.share({
     title: 'Join my BikerSync ride',
-    text: `Join my group ride! Ride ID: ${rideId}`,
-    url,
+    text: `Join my group ride on BikerSync! Ride ID: ${rideId}`,
   }).catch(() => {});
 }

@@ -5,12 +5,22 @@ apply plugin: 'com.google.firebase.crashlytics'
 android {
     namespace = "com.bikersync.app"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    signingConfigs {
+        release {
+            storeFile file(BIKERSYNC_STORE_FILE)
+            storePassword BIKERSYNC_STORE_PASSWORD
+            keyAlias BIKERSYNC_KEY_ALIAS
+            keyPassword BIKERSYNC_KEY_PASSWORD
+        }
+    }
+
     defaultConfig {
         applicationId "com.bikersync.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -20,6 +30,7 @@ android {
     }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
