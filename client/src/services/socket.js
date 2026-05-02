@@ -1,16 +1,15 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
+export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
 // Singleton socket instance
-// path '/bs': Railway CDN (Fastly) intercepts the default '/socket.io' path
-// and blocks HTTP polling — using a custom path bypasses that interception.
-// polling first so Jio/carrier-proxied connections work; Socket.io upgrades
-// to WebSocket automatically once the session is established.
+// WebSocket-first: Railway/Fastly CDN buffers long-polling GET responses, which
+// breaks PTT (5 chunks/sec) even though infrequent events (GPS, chat) work fine.
+// WSS on port 443 bypasses CDN buffering and works on all Indian carriers (Jio/Airtel).
+// Polling is kept as last-resort fallback for restricted networks.
 export const socket = io(SOCKET_URL, {
   path: '/bs',
-  transports: ['polling', 'websocket'],
-  upgrade: true,
+  transports: ['websocket', 'polling'],
   autoConnect: false, // connect only when joining a ride
 });
 

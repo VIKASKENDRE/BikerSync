@@ -9,12 +9,19 @@
 //
 // Initiator rule: lexicographically smaller riderId sends the offer.
 
-import { socket } from './socket';
+import { socket, SOCKET_URL } from './socket';
 
-const ICE_SERVERS = [
+const FALLBACK_ICE = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
+
+// Fetch TURN credentials from our server at module load — completes well before
+// any RTCPeerConnection is created (signaling takes several seconds).
+const _iceServerPromise = fetch(`${SOCKET_URL}/api/ice-servers`)
+  .then((r) => (r.ok ? r.json() : null))
+  .catch(() => null)
+  .then((servers) => servers ?? FALLBACK_ICE);
 
 const RELAY_TTL = 4;
 
@@ -94,10 +101,16 @@ class WebRTCMesh {
     this._broadcastJSON({ type: 'voice_start', mimeType });
   }
 
-  broadcastVoiceChunk(arrayBuffer) {
+  broadcastVoiceChunk(data) {
     for (const [, dc] of this._channels) {
       if (dc.readyState === 'open') {
-        try { dc.send(arrayBuffer); } catch {}
+        try {
+          // Native Android sends base64 strings; wrap as JSON so onmessage can parse them.
+          // Browser sends ArrayBuffer; send as binary frame.
+          dc.send(typeof data === 'string'
+            ? JSON.stringify({ type: 'voice_chunk', chunk: data })
+            : data);
+        } catch {}
       }
     }
   }
@@ -151,8 +164,9 @@ class WebRTCMesh {
     if (this._selfId < riderId) this._createOffer(riderId);
   }
 
-  _newPC(riderId) {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  async _newPC(riderId) {
+    const iceServers = await _iceServerPromise;
+    const pc = new RTCPeerConnection({ iceServers });
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) this._signal(riderId, candidate.toJSON());
@@ -167,12 +181,12 @@ class WebRTCMesh {
     };
 
     this._peers.set(riderId, pc);
-    this.onPeerChange?.(); // surface "connecting" state immediately
+    this.onPeerChange?.();
     return pc;
   }
 
   async _createOffer(riderId) {
-    const pc = this._newPC(riderId);
+    const pc = await this._newPC(riderId);
     const dc = pc.createDataChannel('bs', { ordered: false, maxRetransmits: 0 });
     this._setupDC(riderId, dc);
 
@@ -183,7 +197,7 @@ class WebRTCMesh {
 
   async _handleOffer(fromId, offer) {
     if (this._peers.has(fromId)) return;
-    const pc = this._newPC(fromId);
+    const pc = await this._newPC(fromId);
     pc.ondatachannel = ({ channel }) => this._setupDC(fromId, channel);
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -235,7 +249,8 @@ class WebRTCMesh {
             break;
           case 'chat':        this.onChat?.(msg.message);                  break;
           case 'sos':         this.onSOS?.(msg.payload);                   break;
-          case 'voice_start': this.onVoiceStart?.(riderId, msg.mimeType);  break;
+          case 'voice_start': this.onVoiceStart?.(riderId, msg.mimeType);    break;
+          case 'voice_chunk': this.onVoiceChunk?.(riderId, msg.chunk);     break;
           case 'voice_end':   this.onVoiceEnd?.(riderId);                  break;
           case 'rtc_relay':   this._onRelayMessage(msg, riderId);          break;
         }

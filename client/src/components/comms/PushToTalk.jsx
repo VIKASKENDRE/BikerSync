@@ -23,6 +23,19 @@ export default function PushToTalk() {
   const recorderRef = useRef(null);
   const webBusy     = useRef(false);
 
+  // Release mic on unmount (e.g. rider navigates away mid-transmission)
+  useEffect(() => {
+    return () => {
+      mediaRef.current?.getTracks().forEach((t) => t.stop());
+      mediaRef.current = null;
+      if (recorderRef.current?.state !== 'inactive') {
+        try { recorderRef.current?.stop(); } catch {}
+      }
+      recorderRef.current = null;
+      if (IS_NATIVE) { try { Voice.stopRecording(); } catch {} }
+    };
+  }, []);
+
   // Group channel events — server opens channel for all when any rider transmits
   useEffect(() => {
     const onChannelOpen = () => setInChannel(true);
@@ -50,21 +63,21 @@ export default function PushToTalk() {
       await Voice.startRecording();
 
       voiceListenerRef.current = await Voice.addListener('audioChunk', ({ pcm16b64 }) => {
-        if (socket.connected) {
-          socket.emit('voice:chunk', pcm16b64);
+        if (wifiDirectMesh.isActive) {
+          wifiDirectMesh.broadcastVoiceChunk(pcm16b64);
         } else if (webrtcMesh.activePeerCount > 0) {
           webrtcMesh.broadcastVoiceChunk(pcm16b64);
-        } else if (wifiDirectMesh.isActive) {
-          wifiDirectMesh.broadcastVoiceChunk(pcm16b64);
+        } else if (socket.connected) {
+          socket.emit('voice:chunk', pcm16b64);
         }
       });
 
-      if (socket.connected) {
-        socket.emit('voice:start', { mimeType: 'audio/pcm16;rate=16000' });
+      if (wifiDirectMesh.isActive) {
+        wifiDirectMesh.broadcastVoiceStart('audio/pcm16;rate=16000');
       } else if (webrtcMesh.activePeerCount > 0) {
         webrtcMesh.broadcastVoiceStart('audio/pcm16;rate=16000');
-      } else if (wifiDirectMesh.isActive) {
-        wifiDirectMesh.broadcastVoiceStart('audio/pcm16;rate=16000');
+      } else if (socket.connected) {
+        socket.emit('voice:start', { mimeType: 'audio/pcm16;rate=16000' });
       }
 
       setTransmitting(true);
@@ -81,9 +94,9 @@ export default function PushToTalk() {
     try { await voiceListenerRef.current?.remove(); } catch {}
     voiceListenerRef.current = null;
     nativeBusy.current = false;
-    if (socket.connected) socket.emit('voice:end');
+    if (wifiDirectMesh.isActive) wifiDirectMesh.broadcastVoiceEnd();
     else if (webrtcMesh.activePeerCount > 0) webrtcMesh.broadcastVoiceEnd();
-    else if (wifiDirectMesh.isActive) wifiDirectMesh.broadcastVoiceEnd();
+    else if (socket.connected) socket.emit('voice:end');
   };
 
   // ── Web PTT (browser — uses getUserMedia / MediaRecorder) ─────────────────
@@ -137,19 +150,31 @@ export default function PushToTalk() {
   };
 
   const stopWeb = () => {
-    if (!recorderRef.current) return;
+    if (!recorderRef.current && !mediaRef.current) return;
     setTransmitting(false);
+
+    // Stop tracks immediately — don't wait for onstop.
+    // On Android WebView, delaying this keeps the hardware mic locked.
+    mediaRef.current?.getTracks().forEach((t) => t.stop());
+
     const recorder = recorderRef.current;
-    const stream   = mediaRef.current;
+    const wasOnline = socket.connected;
     recorderRef.current = null;
     mediaRef.current    = null;
-    const wasOnline = socket.connected;
-    recorder.onstop = () => {
-      if (wasOnline) socket.emit('voice:end');
-      else webrtcMesh.broadcastVoiceEnd();
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-    recorder.stop();
+    webBusy.current     = false;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = () => {
+        if (wifiDirectMesh.isActive) wifiDirectMesh.broadcastVoiceEnd();
+        else if (webrtcMesh.activePeerCount > 0) webrtcMesh.broadcastVoiceEnd();
+        else if (wasOnline) socket.emit('voice:end');
+      };
+      recorder.stop();
+    } else {
+      if (wifiDirectMesh.isActive) wifiDirectMesh.broadcastVoiceEnd();
+      else if (webrtcMesh.activePeerCount > 0) webrtcMesh.broadcastVoiceEnd();
+      else if (wasOnline) socket.emit('voice:end');
+    }
   };
 
   const startTalk = IS_NATIVE ? startNative : startWeb;

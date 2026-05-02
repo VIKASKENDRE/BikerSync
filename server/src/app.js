@@ -47,6 +47,39 @@ app.use('/api/social',    require('./routes/social'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
+// ── ICE server credentials for WebRTC TURN ────────────────────────────────────
+// Set METERED_API_URL in Railway env to use your own Metered.ca account.
+// Falls back to the free OpenRelay public TURN (ok for dev / small scale).
+let _iceCache = null;
+let _iceCacheExpiry = 0;
+app.get('/api/ice-servers', async (req, res) => {
+  const now = Date.now();
+  if (_iceCache && now < _iceCacheExpiry) return res.json(_iceCache);
+  if (process.env.METERED_API_URL) {
+    try {
+      const r = await fetch(process.env.METERED_API_URL);
+      if (r.ok) {
+        _iceCache = await r.json();
+        _iceCacheExpiry = now + 3_600_000; // cache 1 hour
+        return res.json(_iceCache);
+      }
+    } catch {}
+  }
+  // Public OpenRelay fallback — free, no signup, ~50 GB/month shared
+  res.json([
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username:   'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ]);
+});
+
 io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
   locationHandler(io, socket);

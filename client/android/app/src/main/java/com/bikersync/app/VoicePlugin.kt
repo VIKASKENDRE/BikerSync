@@ -76,7 +76,7 @@ class VoicePlugin : Plugin() {
         val bufSize = maxOf(minBuf * 4, CHUNK_BYTES * 2)
 
         val ar = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE, CHANNEL, ENCODING, bufSize
         )
         if (ar.state != AudioRecord.STATE_INITIALIZED) {
@@ -112,6 +112,8 @@ class VoicePlugin : Plugin() {
         notifyListeners("recordingStopped", JSObject())
         Log.d(TAG, "Recording stopped")
     }
+
+    override fun handleOnPause() { if (isRecording) doStop() }
 
     override fun handleOnDestroy() {
         doStop()

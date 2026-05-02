@@ -153,7 +153,16 @@ export function useVoicePlayback() {
     };
 
     const onChunk = async ({ riderId, chunk }) => {
-      const sender = sendersRef.current[riderId];
+      let sender = sendersRef.current[riderId];
+
+      // voice:incoming can be missed if the receiver's socket reconnected while
+      // the sender was already transmitting (common on mobile data). Bootstrap a
+      // PCM16 stream on the first chunk so audio plays without a re-join.
+      if (!sender && typeof chunk === 'string') {
+        sender = { stream: new PCM16Stream(), isPCM16: true, mimeType: 'audio/pcm16;rate=16000' };
+        sendersRef.current[riderId] = sender;
+      }
+
       if (!sender || !sender.stream) return;
 
       if (sender.isPCM16) {

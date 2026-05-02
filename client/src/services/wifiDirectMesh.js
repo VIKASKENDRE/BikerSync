@@ -44,6 +44,10 @@ class WifiDirectMesh {
     this.groupSsid        = '';    // set after createGroup() resolves
     this.groupPassphrase  = '';
 
+    this._rideId           = null;
+    this._role             = null; // 'lead' | 'client'
+    this._connecting       = false; // guard against overlapping connectToGroup calls
+
     this.onGPS             = null;
     this.onChat            = null;
     this.onSOS             = null;
@@ -84,11 +88,10 @@ class WifiDirectMesh {
     // once the socket is actually open.
     await add('tcpConnected', ({ role }) => {
       if (role === 'client') {
-        // Non-GO: connected to GO via TCP
-        this._peerCount = 1;
+        this._connecting = false; // connection succeeded — allow future retries
+        this._peerCount  = 1;
         this.onPeerChange?.();
       }
-      // GO side is handled by peerCountChanged above
     });
 
     // WiFi P2P state change — inform UI but don't update _peerCount yet
@@ -102,7 +105,8 @@ class WifiDirectMesh {
 
     await add('connectionChanged', ({ connected, isGroupOwner }) => {
       if (!connected) {
-        this._peerCount = 0;
+        this._peerCount  = 0;
+        this._connecting = false; // allow retry after a real disconnect
         this.onPeerChange?.();
       } else {
         this._isGroupOwner = isGroupOwner;
@@ -113,8 +117,10 @@ class WifiDirectMesh {
     await add('peersChanged', ({ peers }) => {
       this._discoveredPeers = peers ?? [];
       this.onPeersDiscovered?.(this._discoveredPeers);
-      // Legacy fallback auto-connect (Android 9 or if connectToGroup failed)
-      if (!this._isGroupOwner && this._peerCount === 0 && peers?.length > 0) {
+      // Legacy fallback auto-connect (Android 9 or if connectToGroup failed).
+      // Guard: skip if already connected or a connection attempt is in progress
+      // to prevent repeated invitations to the group owner.
+      if (!this._isGroupOwner && this._peerCount === 0 && !this._connecting && peers?.length > 0) {
         WifiDirect.connect({ address: peers[0].address }).catch(() => {});
       }
     });
@@ -128,6 +134,8 @@ class WifiDirectMesh {
    */
   async createGroup(selfRiderId, rideId) {
     if (!IS_NATIVE) return;
+    this._rideId = rideId ?? null;
+    this._role   = 'lead';
     await this.init(selfRiderId);
     const result = await WifiDirect.createGroup({ rideId: rideId ?? '' });
     this._isGroupOwner   = true;
@@ -144,15 +152,21 @@ class WifiDirectMesh {
    */
   async startDiscovery(selfRiderId, rideId) {
     if (!IS_NATIVE) return;
+    if (this._connecting) return; // already attempting — don't stack calls
+    this._rideId = rideId ?? null;
+    this._role   = 'client';
     await this.init(selfRiderId);
 
     if (rideId) {
       const { ssid, passphrase } = groupCredentials(rideId);
       try {
+        this._connecting = true;
         await WifiDirect.connectToGroup({ ssid, passphrase });
         return; // Success — TCP retry loop is running in native code
       } catch (err) {
         console.warn('[WD] connectToGroup failed, falling back to discovery:', err);
+      } finally {
+        this._connecting = false;
       }
     }
 
@@ -231,6 +245,10 @@ class WifiDirectMesh {
     this._peerCount       = 0;
     this._selfRiderId     = null;
     this._discoveredPeers = [];
+
+    this._rideId     = null;
+    this._role       = null;
+    this._connecting = false;
 
     this.onGPS = this.onChat = this.onSOS = null;
     this.onVoiceStart = this.onVoiceChunk = this.onVoiceEnd = null;

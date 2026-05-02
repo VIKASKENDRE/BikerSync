@@ -44,6 +44,7 @@ export default function MapDashboard() {
   const [rideCopied,    setRideCopied]    = useState(false);
   const [wdModalOpen,   setWdModalOpen]   = useState(false);
   const [wdCopied,      setWdCopied]      = useState(''); // 'ssid' | 'pass' | ''
+  const [wdRetrying,    setWdRetrying]    = useState(false);
   const [wdGroupSsid,   setWdGroupSsid]   = useState(() => wifiDirectMesh.groupSsid);
   const [wdGroupPass,   setWdGroupPass]   = useState(() => wifiDirectMesh.groupPassphrase);
   const [isPiP,         setIsPiP]         = useState(false);
@@ -91,6 +92,19 @@ export default function MapDashboard() {
     try { await navigator.clipboard.writeText(text); } catch {}
     setWdCopied(key);
     setTimeout(() => setWdCopied(''), 2000);
+  };
+
+  const retryWifiDirect = async () => {
+    if (wdRetrying || !rideId || !selfRider?.riderId) return;
+    setWdRetrying(true);
+    try {
+      if (selfRider.role === 'lead') {
+        await wifiDirectMesh.createGroup(selfRider.riderId, rideId);
+      } else {
+        await wifiDirectMesh.startDiscovery(selfRider.riderId, rideId);
+      }
+    } catch {}
+    setWdRetrying(false);
   };
 
   const recenter = () => {
@@ -350,6 +364,26 @@ export default function MapDashboard() {
                   <p className="px-5 py-4 text-gray-500 text-sm">
                     WiFi Direct group not ready yet — stay on this screen.
                   </p>
+                )}
+
+                {/* Retry button — re-runs createGroup (lead) or startDiscovery (client) */}
+                {wdPeers === 0 && (
+                  <div className="px-5 pb-5">
+                    <button
+                      onClick={retryWifiDirect}
+                      disabled={wdRetrying}
+                      className="w-full py-3 rounded-2xl text-sm font-bold
+                                 bg-[#FF6B00]/20 border border-[#FF6B00]/40 text-[#FF6B00]
+                                 active:scale-95 transition-all disabled:opacity-40
+                                 disabled:scale-100"
+                    >
+                      {wdRetrying
+                        ? 'Searching…'
+                        : selfRider?.role === 'lead'
+                        ? 'Re-advertise group'
+                        : 'Scan for ride'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
