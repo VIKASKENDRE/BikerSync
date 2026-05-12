@@ -1,0 +1,46 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rides": {
+      ".read": false,
+      ".write": false,
+
+      "$rideId": {
+        ".read": true,
+        ".write": true,
+
+        "riders": {
+          "$riderId": {
+            ".validate": "newData.hasChildren(['riderId', 'ts'])"
+          }
+        },
+
+        "signals": {
+          "$toId": {
+            "$pushId": {
+              ".validate": "newData.hasChildren(['from', 'signal', 'ts'])"
+            }
+          }
+        },
+
+        "chat": {
+          "$pushId": {
+            ".validate": "newData.hasChildren(['ts'])"
+          }
+        },
+
+        "sos": {
+          "$pushId": {
+            ".validate": "newData.hasChildren(['ts'])"
+          }
+        },
+
+        "status": {
+          ".validate": "newData.isString() && (newData.val() === 'active' || newData.val() === 'ended')"
+        }
+      }
+    }
+  }
+}

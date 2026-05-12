@@ -6,6 +6,8 @@ import android.webkit.PermissionRequest;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
+import com.google.firebase.appcheck.FirebaseAppCheck;
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -15,6 +17,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PiPPlugin.class);
         registerPlugin(LocationPlugin.class);
         super.onCreate(savedInstanceState);
+
+        FirebaseAppCheck.getInstance().installAppCheckProviderFactory(
+            PlayIntegrityAppCheckProviderFactory.getInstance()
+        );
 
         // Tag crash reports with the rider's localStorage UUID so we can
         // correlate a Crashlytics report with a specific beta tester.

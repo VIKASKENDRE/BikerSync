@@ -21,6 +21,7 @@ client/android/local.properties
 
 # ── Android build artifacts ───────────────────────────────────────────────────
 client/android/app/build/
+client/android/app/release/
 client/android/build/
 client/android/.gradle/
 client/android/capacitor-cordova-android-plugins/

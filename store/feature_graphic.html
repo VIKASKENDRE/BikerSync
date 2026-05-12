@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1024"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1024px;
+    height: 500px;
+    background: #0b1a2e;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Subtle grid */
+  .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(30,120,220,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,120,220,0.06) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  /* Radial glow behind icon */
+  .glow {
+    position: absolute;
+    left: -80px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 560px;
+    height: 560px;
+    background: radial-gradient(circle, rgba(30,120,220,0.22) 0%, rgba(30,120,220,0.08) 45%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  /* Left — icon + brand */
+  .logo-side {
+    position: absolute;
+    left: 52px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .icon-wrap {
+    width: 192px;
+    height: 192px;
+    border-radius: 36px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 2px rgba(30,120,220,0.4),
+      0 8px 40px rgba(30,120,220,0.35),
+      0 0 80px rgba(30,120,220,0.15);
+    flex-shrink: 0;
+  }
+
+  .icon-wrap img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .brand-name {
+    font-size: 62px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    color: #ffffff;
+    line-height: 1;
+  }
+
+  .brand-name span {
+    color: #1e78dc;
+  }
+
+  .brand-tagline {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  /* Divider */
+  .divider {
+    position: absolute;
+    left: 498px;
+    top: 64px;
+    bottom: 64px;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, rgba(30,120,220,0.5), transparent);
+  }
+
+  /* Right — feature list */
+  .features-side {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    left: 516px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 16px;
+    padding: 0 48px;
+  }
+
+  .feature {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(30,120,220,0.12);
+    border: 1px solid rgba(30,120,220,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .feature-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.2px;
+  }
+
+  .feature-desc {
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.45);
+  }
+
+  /* Bottom accent bar */
+  .bottom-strip {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #1e78dc, #5ab4ff, #1e78dc);
+  }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+
+  <div class="logo-side">
+    <div class="icon-wrap">
+      <img src="/icon/bks.png" alt="BikerSync icon"/>
+    </div>
+    <div class="brand">
+      <div class="brand-name">biker<span>sync</span></div>
+      <div class="brand-tagline">Connect. Ride. Sync.</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="features-side">
+    <div class="feature">
+      <div class="feature-icon">📍</div>
+      <div class="feature-text">
+        <div class="feature-title">Live GPS Tracking</div>
+        <div class="feature-desc">See every rider on the map in real time</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎙️</div>
+      <div class="feature-text">
+        <div class="feature-title">Push-to-Talk Voice</div>
+        <div class="feature-desc">Group channel open for the entire ride</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">💬</div>
+      <div class="feature-text">
+        <div class="feature-title">Group Chat</div>
+        <div class="feature-desc">Stay in sync without stopping</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🆘</div>
+      <div class="feature-text">
+        <div class="feature-title">One-Tap SOS</div>
+        <div class="feature-desc">Broadcasts location to riders &amp; emergency contacts</div>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🗺️</div>
+      <div class="feature-text">
+        <div class="feature-title">Navigate Tab</div>
+        <div class="feature-desc">Search destination, launch turn-by-turn instantly</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-strip"></div>
+</body>
+</html>
