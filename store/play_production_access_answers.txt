@@ -1,0 +1,52 @@
+Google Play — Apply for Production Access
+==========================================
+
+HOW DID YOU RECRUIT USERS FOR YOUR CLOSED TEST?
+-------------------------------------------------
+Most of them were friends and family members and some were friends of friends.
+
+
+HOW EASY WAS IT TO RECRUIT TESTERS FOR YOUR APP?
+-------------------------------------------------
+Difficult
+
+
+DESCRIBE THE ENGAGEMENT YOU RECEIVED FROM TESTERS DURING YOUR CLOSED TEST
+---------------------------------------------------------------------------
+Testers rode in groups of 2–5 and used live GPS, Push-to-Talk voice, group chat, and SOS on real rides. All major features were exercised. Usage matched real-world expectations — joining sessions, tracking group position, and communicating hands-free while riding.
+
+
+PROVIDE A SUMMARY OF THE FEEDBACK THAT YOU RECEIVED FROM TESTERS
+-----------------------------------------------------------------
+Feedback collected via a shared WhatsApp group. Key issues: PTT hold-to-talk was unsafe while riding; audio dropped on mobile data; SOS required a confirm tap; Ride ID sharing was confusing. All issues were addressed in v1.2 before applying for production.
+
+
+ABOUT YOUR APP
+==============
+
+WHO IS THE INTENDED AUDIENCE OF YOUR APP?
+------------------------------------------
+Motorcycle riders who participate in group rides — recreational weekend riders, touring clubs, and riding communities. Users are adults who need hands-free communication and live group coordination while riding, without stopping to check their phone or make calls.
+
+
+DESCRIBE HOW YOUR APP PROVIDES VALUE TO USERS
+----------------------------------------------
+BikerSync eliminates the need to stop or look at a phone during a group ride. Live GPS keeps the group together, PTT voice lets riders communicate hands-free, and one-tap SOS provides instant emergency alerting — all in one app built for the realities of riding.
+
+
+HOW MANY INSTALLS DO YOU EXPECT IN YOUR FIRST YEAR?
+----------------------------------------------------
+0 – 10K
+
+
+YOUR PRODUCTION READINESS
+==========================
+
+WHAT CHANGES DID YOU MAKE TO YOUR APP BASED ON WHAT YOU LEARNED DURING YOUR CLOSED TEST?
+------------------------------------------------------------------------------------------
+Redesigned PTT as tap-to-toggle with a group voice channel; switched to WebRTC+TURN for reliable audio over mobile data; removed the SOS confirmation dialog; simplified Ride ID sharing; fixed a Wi-Fi Direct loop that caused repeated permission popups.
+
+
+HOW DID YOU DECIDE THAT YOUR APP IS READY FOR PRODUCTION?
+----------------------------------------------------------
+All tester-reported issues were fixed and verified on real Android devices. The app ran through full ride sessions — GPS tracking, PTT, chat, and SOS — without crashes. Core flows are stable across mobile data and Wi-Fi, and Firebase security rules are deployed.
