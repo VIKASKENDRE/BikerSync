@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { wifiDirectMesh } from '../../services/wifiDirectMesh';
-import { enterPiP, onPiPChange } from '../../services/pip';
+import { enterPiP, onPiPChange, openMapsWithPiP } from '../../services/pip';
 import { deleteRide } from '../../services/rtdbRide';
 import RiderMarker from './RiderMarker';
 import RouteLayer from './RouteLayer';
@@ -145,14 +145,16 @@ export default function MapDashboard() {
       await enterPiP();
       return;
     }
-    setIsNavigating(true);
-    await enterPiP();
-    await new Promise((r) => setTimeout(r, 120));
     const origin = selfRider?.lat ? `${selfRider.lat},${selfRider.lng}` : '';
     const url = origin
       ? `https://www.google.com/maps/dir/?api=1&origin=${origin}&travelmode=driving`
       : `https://www.google.com/maps/`;
-    window.open(url, '_system');
+    setIsNavigating(true);
+    // Native: enter PiP + launch Maps in one synchronous pass so the launch
+    // fires while the activity is still resumed (avoids Android's
+    // background-activity-launch block). Fall back to window.open on PWA.
+    const ok = await openMapsWithPiP(url);
+    if (!ok) window.open(url, '_system');
   };
 
   const stopNavigation = () => setIsNavigating(false);

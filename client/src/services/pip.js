@@ -24,6 +24,22 @@ export async function enterPiP() {
 }
 
 /**
+ * Open Google Maps natively and (optionally) drop into PiP in one pass.
+ *
+ * Returns true if the native plugin handled it, false otherwise (e.g. running
+ * as a PWA in a browser) so callers can fall back to window.open.
+ */
+export async function openMapsWithPiP(url, { pip = true } = {}) {
+  try {
+    await PiPNative.openMaps({ url, pip });
+    return true;
+  } catch {
+    // Browser / plugin missing / no maps app — let the caller fall back.
+    return false;
+  }
+}
+
+/**
  * Listen for PiP mode changes.
  * Callback receives { active: boolean }.
  * Returns a PluginListenerHandle with a .remove() method.

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { openMapsWithPiP } from '../../services/pip';
 
 const API = `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000'}/api/maps`;
 
@@ -12,7 +13,7 @@ const API = `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000'}/api/m
  * window.open(url, '_system') tells Capacitor to fire an Android Intent
  * instead of opening in the in-app WebView.
  */
-function openInGoogleMaps({ origin, destination, destName }) {
+async function openInGoogleMaps({ origin, destination, destName }) {
   // Navigation intent — most reliable way to launch Google Maps for turn-by-turn
   const navUrl = [
     'https://www.google.com/maps/dir/?api=1',
@@ -21,12 +22,17 @@ function openInGoogleMaps({ origin, destination, destName }) {
     '&travelmode=driving',
   ].join('');
 
-  window.open(navUrl, '_system');
+  // Native launch (enter PiP + start Maps in one pass). Falls back to
+  // window.open in the browser/PWA where the plugin isn't present.
+  const ok = await openMapsWithPiP(navUrl);
+  if (!ok) window.open(navUrl, '_system');
 }
 
-function openCurrentLocationInMaps(lat, lng) {
+async function openCurrentLocationInMaps(lat, lng) {
   // geo: URI — shows device location in Google Maps (or default maps app)
-  window.open(`geo:${lat},${lng}?z=15`, '_system');
+  const url = `geo:${lat},${lng}?z=15`;
+  const ok = await openMapsWithPiP(url);
+  if (!ok) window.open(url, '_system');
 }
 
 export default function NavigateTab({ selfRider }) {
