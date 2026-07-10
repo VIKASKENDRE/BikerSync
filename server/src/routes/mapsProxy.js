@@ -108,7 +108,8 @@ router.get('/details', async (req, res) => {
 
     res.status(404).json({ error: data.status });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    console.error('[Maps details]', err.message);
+    res.status(502).json({ error: 'Place lookup failed' });
   }
 });
 
@@ -199,7 +200,10 @@ async function osrmFallback(origin, destination, res) {
       destination: { lat: destination.lat, lng: destination.lng },
       source:      'osrm',
     });
-  } catch (err) { res.status(502).json({ error: err.message }); }
+  } catch (err) {
+    console.error('[Maps osrm]', err.message);
+    res.status(502).json({ error: 'Routing failed' });
+  }
 }
 
 function formatOsrm(s) {

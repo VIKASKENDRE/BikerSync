@@ -1,0 +1,49 @@
+{
+  "_comment": "STRICT rules v2 — deploy ONLY when AUTH_ENFORCE=true is flipped (see docs/AUTH_ROLLOUT.md). Requires all clients on the anonymous-auth build; membership is written server-side via the Admin SDK on ride create/join.",
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rides": {
+      "$rideId": {
+        ".read": "auth != null && root.child('rides').child($rideId).child('members').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('rides').child($rideId).child('members').child(auth.uid).val() === 'lead'",
+
+        "riders": {
+          "$riderId": {
+            ".write": "auth != null && auth.uid === $riderId && root.child('rides').child($rideId).child('members').child(auth.uid).exists()",
+            ".validate": "newData.hasChildren(['riderId', 'ts'])"
+          }
+        },
+
+        "signals": {
+          "$toId": {
+            ".write": "auth != null && auth.uid === $toId && root.child('rides').child($rideId).child('members').child(auth.uid).exists()",
+            "$pushId": {
+              ".write": "auth != null && !data.exists() && newData.child('from').val() === auth.uid && root.child('rides').child($rideId).child('members').child(auth.uid).exists()",
+              ".validate": "newData.hasChildren(['from', 'signal', 'ts'])"
+            }
+          }
+        },
+
+        "chat": {
+          "$pushId": {
+            ".write": "auth != null && root.child('rides').child($rideId).child('members').child(auth.uid).exists() && ((!data.exists() && newData.child('senderId').val() === auth.uid) || (data.child('senderId').val() === auth.uid && !newData.exists()))",
+            ".validate": "newData.hasChildren(['ts'])"
+          }
+        },
+
+        "sos": {
+          "$pushId": {
+            ".write": "auth != null && root.child('rides').child($rideId).child('members').child(auth.uid).exists() && ((!data.exists() && newData.child('riderId').val() === auth.uid) || (data.child('riderId').val() === auth.uid && !newData.exists()))",
+            ".validate": "newData.hasChildren(['ts'])"
+          }
+        },
+
+        "status": {
+          ".validate": "newData.isString() && (newData.val() === 'active' || newData.val() === 'ended')"
+        }
+      }
+    }
+  }
+}

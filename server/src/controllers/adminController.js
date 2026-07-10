@@ -24,7 +24,8 @@ async function getStats(req, res) {
 
     res.json({ totalRides, activeRides, totalUsers, totalSOS });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -34,7 +35,8 @@ async function getRides(req, res) {
     const rides = await Ride.find().sort({ createdAt: -1 }).limit(200);
     res.json(rides);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -48,7 +50,8 @@ async function deleteRide(req, res) {
     ]);
     res.json({ message: `Ride ${rideId} deleted` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -66,7 +69,8 @@ async function getUsers(req, res) {
     }));
     res.json(users);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -82,7 +86,8 @@ async function deleteUser(req, res) {
     await Ride.updateMany({}, { $pull: { riders: { riderId: uid } } });
     res.json({ message: `User ${uid} deleted` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -94,7 +99,8 @@ async function resetData(req, res) {
     if (target === 'sos'   || target === 'all') await SOSEvent.deleteMany();
     res.json({ message: `Reset complete: ${target}` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -104,7 +110,8 @@ async function getApiUsage(req, res) {
     const records = await ApiUsage.find().sort({ month: -1 }).limit(6);
     res.json(records);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -115,7 +122,8 @@ async function resetFallback(req, res) {
     await ApiUsage.updateOne({ month }, { fallbackMode: false });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Admin]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 

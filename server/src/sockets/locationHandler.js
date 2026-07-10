@@ -1,12 +1,55 @@
 // Manages rider GPS state per ride room with throttling and dead-reckoning gates
 
+const mongoose = require('mongoose');
+const Ride = require('../models/Ride');
+const { setMember } = require('../services/rtdbAdmin');
+
+// Skip Mongo lookups when the DB is down — mongoose buffers queries for 10 s
+// before failing, which would stall every ride:join on a DB-less server.
+const dbReady = () => mongoose.connection.readyState === 1;
+
 const rideRooms   = new Map(); // rideId -> Map(riderId -> riderState)
 const riderSockets = new Map(); // `${rideId}:${riderId}` -> socketId  (for WebRTC signaling)
 
 module.exports = (io, socket) => {
-  socket.on('ride:join', ({ rideId, riderId, role, displayName }) => {
+  socket.on('ride:join', async ({ rideId, riderId: claimedId, role: claimedRole, displayName } = {}) => {
+    if (typeof rideId !== 'string' || !rideId) return;
+
+    // Verified Firebase uid wins; the client-claimed id is only honored for
+    // legacy app versions in soft mode (socket.data.uid === null).
+    const riderId = socket.data.uid ?? claimedId;
+    if (typeof riderId !== 'string' || !riderId) return;
+
+    const name = typeof displayName === 'string' && displayName.trim()
+      ? displayName.trim().slice(0, 40)
+      : 'Rider';
+
+    // Server decides the role — 'lead' cannot simply be claimed.
+    let role = claimedRole === 'sweep' ? 'sweep' : 'rider';
+    const room = rideRooms.get(rideId);
+    const existing = room?.get(riderId);
+    if (existing) {
+      role = existing.role; // rejoin keeps the in-room role (incl. transferred lead)
+    } else {
+      let ride = null;
+      if (dbReady()) {
+        try { ride = await Ride.findOne({ rideId }).lean(); } catch {}
+      }
+      if (ride?.leadRiderId === riderId) {
+        role = 'lead';
+      } else if (!ride && claimedRole === 'lead' && !(room?.size > 0)) {
+        // Ride created offline (no Mongo doc): first joiner may claim lead
+        role = 'lead';
+      }
+    }
+    // Never allow a second lead in a room
+    if (role === 'lead' && room &&
+        [...room.values()].some((r) => r.role === 'lead' && r.riderId !== riderId)) {
+      role = 'rider';
+    }
+
     socket.join(rideId);
-    socket.data = { rideId, riderId, role, displayName };
+    socket.data = { ...socket.data, rideId, riderId, role, displayName: name };
 
     // Track socketId so we can deliver targeted WebRTC signals
     riderSockets.set(`${rideId}:${riderId}`, socket.id);
@@ -14,19 +57,20 @@ module.exports = (io, socket) => {
     if (!rideRooms.has(rideId)) rideRooms.set(rideId, new Map());
 
     rideRooms.get(rideId).set(riderId, {
-      riderId, role, displayName,
-      lat: null, lng: null,
-      speed: 0, heading: 0,
-      battery: null,
+      ...(existing ?? {}),
+      riderId, role, displayName: name,
+      lat: existing?.lat ?? null, lng: existing?.lng ?? null,
+      speed: existing?.speed ?? 0, heading: existing?.heading ?? 0,
+      battery: existing?.battery ?? null,
       lastSeen: Date.now(),
       online: true,
     });
 
     const snapshot = [...rideRooms.get(rideId).values()];
     socket.emit('ride:snapshot', snapshot);
-    socket.to(rideId).emit('rider:joined', { riderId, role, displayName });
+    socket.to(rideId).emit('rider:joined', { riderId, role, displayName: name });
 
-    console.log(`[Ride ${rideId}] ${displayName} (${role}) joined`);
+    console.log(`[Ride ${rideId}] ${name} (${role}) joined${socket.data.uid ? '' : ' [unverified]'}`);
   });
 
   // WebRTC signaling relay — delivers offer/answer/ICE to a specific rider.
@@ -86,6 +130,12 @@ module.exports = (io, socket) => {
     // Promote target → lead
     room.get(targetRiderId).role = 'lead';
 
+    // Best-effort persist so ride:join resolves the current lead after reconnects
+    if (dbReady()) Ride.updateOne({ rideId }, { leadRiderId: targetRiderId }).catch(() => {});
+    // Keep RTDB membership roles in sync (v2 rules let only the lead delete the ride node)
+    setMember(rideId, riderId, 'rider');
+    setMember(rideId, targetRiderId, 'lead');
+
     io.to(rideId).emit('role:changed', { riderId, role: 'rider' });
     io.to(rideId).emit('role:changed', { riderId: targetRiderId, role: 'lead' });
     console.log(`[Ride ${rideId}] Lead transferred: ${riderId} → ${targetRiderId}`);
@@ -105,6 +155,7 @@ module.exports = (io, socket) => {
     if (!rideId || role !== 'lead') return;
     io.to(rideId).emit('ride:ended');
     rideRooms.delete(rideId);
+    if (dbReady()) Ride.updateOne({ rideId }, { status: 'ended', endedAt: new Date() }).catch(() => {});
     console.log(`[Ride ${rideId}] Ended by lead`);
   });
 
@@ -143,6 +194,8 @@ module.exports = (io, socket) => {
       const nextLead = [...room.values()].find((r) => r.online && r.riderId !== riderId);
       if (nextLead) {
         nextLead.role = 'lead';
+        if (dbReady()) Ride.updateOne({ rideId }, { leadRiderId: nextLead.riderId }).catch(() => {});
+        setMember(rideId, nextLead.riderId, 'lead');
         io.to(rideId).emit('role:changed', { riderId: nextLead.riderId, role: 'lead' });
         console.log(`[Ride ${rideId}] Lead auto-assigned to ${nextLead.riderId} after ${riderId} disconnected`);
       }

@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 
 const locationHandler = require('./sockets/locationHandler');
@@ -30,13 +32,32 @@ const io = new Server(server, {
   pingInterval: 10000,
 });
 
+app.set('trust proxy', 1); // Railway sits behind a proxy — needed for real client IPs
+// crossOriginResourcePolicy relaxed so the Vercel/Capacitor origins can load /uploads images
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
+
+// ── Per-IP rate limits ────────────────────────────────────────────────────────
+// GPS/chat/PTT ride on the socket, so REST volume per legitimate user is low.
+const limiter = (windowMs, max) =>
+  rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false,
+              message: { error: 'Too many requests, slow down' } });
+app.use('/api/maps',    limiter(5 * 60 * 1000, 60));   // Google billing exposure
+app.use('/api/geocode', limiter(5 * 60 * 1000, 60));
+app.use('/api/sos',     limiter(10 * 60 * 1000, 10));  // spam guard; generous for real emergencies
+app.use('/api/',        limiter(5 * 60 * 1000, 300));
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir));
+// nosniff + CSP so an upload can never execute as HTML/JS on this origin
+app.use('/uploads', express.static(uploadsDir, {
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
+  },
+}));
 
 app.use('/api/rides',     require('./routes/rides'));
 app.use('/api/sos',       require('./routes/sos'));
@@ -79,6 +100,8 @@ app.get('/api/ice-servers', async (req, res) => {
     },
   ]);
 });
+
+io.use(require('./middleware/socketAuth'));
 
 io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);

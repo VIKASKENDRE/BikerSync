@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useGPS } from '../hooks/useGPS';
 import { socket } from '../services/socket';
 import { api } from '../services/api';
+import { ensureSignedIn } from '../services/firebase';
 
 const ROLES = ['rider', 'sweep'];
 
@@ -25,8 +26,13 @@ export default function Home() {
   const [shareInfo, setShareInfo] = useState(null);
   const [copied, setCopied]   = useState(false);
 
-  // Stable riderId from localStorage (set once at install, never changes)
-  const riderId = user.uid;
+  // Resolve identity at action time: prefer the Firebase anonymous uid (the
+  // server derives riderId from the verified token, so client and server must
+  // agree), fall back to the localStorage UUID when offline.
+  const resolveRiderId = async () => {
+    const u = await ensureSignedIn();
+    return u?.uid ?? user.uid;
+  };
 
   const saveName = (name) => {
     setDisplayName(name);
@@ -43,6 +49,7 @@ export default function Home() {
     if (!gpsOk) { setLoading(false); return setError('GPS permission is required'); }
 
     try {
+      const riderId = await resolveRiderId();
       await api.joinRide(rideId.toUpperCase(), riderId, displayName.trim(), role)
         .catch(() => {});
 
@@ -72,6 +79,7 @@ export default function Home() {
     if (!gpsOk) { setLoading(false); return setError('GPS permission is required'); }
 
     try {
+      const riderId = await resolveRiderId();
       let newId;
       try {
         const data = await api.createRide(rideName.trim(), riderId, displayName.trim());

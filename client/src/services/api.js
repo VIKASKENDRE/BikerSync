@@ -1,13 +1,22 @@
 // In dev: VITE_SOCKET_URL=http://localhost:4000 (direct, bypasses Vite proxy)
 // In prod: VITE_SOCKET_URL=https://bikersync-server-production.up.railway.app
+import { getIdToken } from './firebase';
+
 export const BASE = `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000'}/api`;
 
 async function request(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000); // 15 s timeout
   try {
+    // Attach the Firebase ID token when available — the server derives
+    // riderId from it instead of trusting the request body. Null when
+    // offline (bounded by getIdToken's internal timeout).
+    const token = await getIdToken().catch(() => null);
     const res = await fetch(`${BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
       ...options,
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,

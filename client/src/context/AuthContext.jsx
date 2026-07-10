@@ -1,18 +1,21 @@
 /**
- * AuthContext — offline-first user identity.
+ * AuthContext — frictionless rider identity.
  *
- * No Firebase Authentication. riderId is a stable UUID generated once
- * and stored in localStorage forever. displayName is also persisted so
- * the user only types it once.
+ * No login screen. Identity is a Firebase ANONYMOUS user: the uid is
+ * verifiable by the server (Socket.io handshake and ride REST calls carry
+ * the ID token). While offline or before the first sign-in completes, a
+ * localStorage UUID keeps the offline mesh working; the Firebase uid takes
+ * over as soon as it is known.
  *
- * Exposes the same { user, logout } shape that Home.jsx expects so that
- * callers don't need to change.
+ * Exposes the same { user, updateDisplayName } shape as before so callers
+ * don't need to change.
  */
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { ensureSignedIn, watchAuth } from '../services/firebase';
 
 const AuthContext = createContext(null);
 
-function loadOrCreateRiderId() {
+function loadOrCreateFallbackId() {
   let id = localStorage.getItem('bs_rider_id');
   if (!id) {
     id = crypto.randomUUID();
@@ -22,7 +25,13 @@ function loadOrCreateRiderId() {
 }
 
 export function AuthProvider({ children }) {
-  const uid = useMemo(loadOrCreateRiderId, []);
+  const fallbackUid = useMemo(loadOrCreateFallbackId, []);
+  const [firebaseUid, setFirebaseUid] = useState(null);
+
+  useEffect(() => {
+    ensureSignedIn(); // kick off anonymous sign-in (no-op if already signed in)
+    return watchAuth((u) => setFirebaseUid(u?.uid ?? null));
+  }, []);
 
   const [displayName, setDisplayName] = useState(
     () => localStorage.getItem('bs_display_name') ?? '',
@@ -35,7 +44,7 @@ export function AuthProvider({ children }) {
   };
 
   // Shape compatible with Home.jsx (user.uid, user.displayName)
-  const user = { uid, displayName };
+  const user = { uid: firebaseUid ?? fallbackUid, displayName };
 
   return (
     <AuthContext.Provider value={{ user, updateDisplayName }}>

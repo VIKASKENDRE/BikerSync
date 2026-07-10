@@ -2,7 +2,9 @@ const SOSEvent = require('../models/SOSEvent');
 
 async function triggerSOS(req, res) {
   try {
-    const { rideId, riderId, displayName, lat, lng, battery } = req.body;
+    const { rideId, displayName, lat, lng, battery } = req.body;
+    // Verified uid overrides the client-claimed riderId (legacy fallback)
+    const riderId = req.user?.uid ?? req.body.riderId;
     if (!rideId || !riderId || lat == null || lng == null) {
       return res.status(400).json({ error: 'rideId, riderId, lat, lng required' });
     }
@@ -35,7 +37,8 @@ async function triggerSOS(req, res) {
 
     res.json({ sosId: event._id, message: 'SOS logged' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[SOS]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -49,7 +52,8 @@ async function resolveSOS(req, res) {
     if (!event) return res.status(404).json({ error: 'SOS event not found' });
     res.json({ message: 'SOS resolved', sosId: event._id });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[SOS]', err.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 

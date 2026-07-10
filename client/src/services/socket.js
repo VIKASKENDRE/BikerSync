@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { getIdToken } from './firebase';
 
 export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000';
 
@@ -11,6 +12,13 @@ export const socket = io(SOCKET_URL, {
   path: '/bs',
   transports: ['websocket', 'polling'],
   autoConnect: false, // connect only when joining a ride
+  // Called on every (re)connection attempt — Firebase ID tokens expire after
+  // 1 h, so this keeps reconnects authenticated with a fresh token.
+  auth: (cb) => {
+    getIdToken()
+      .then((token) => cb(token ? { token } : {}))
+      .catch(() => cb({}));
+  },
 });
 
 socket.on('connect_error', (err) => {

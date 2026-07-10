@@ -10,7 +10,8 @@ async function getProfile(req, res) {
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
     res.json(profile);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -34,7 +35,8 @@ async function upsertProfile(req, res) {
     );
     res.json(profile);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -49,7 +51,8 @@ async function followUser(req, res) {
     await UserProfile.updateOne({ uid: targetUid }, { $addToSet: { followers: myUid } });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -61,7 +64,8 @@ async function unfollowUser(req, res) {
     await UserProfile.updateOne({ uid: targetUid }, { $pull: { followers: myUid } });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -77,7 +81,8 @@ async function getFeed(req, res) {
       .limit(50);
     res.json(posts);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -88,7 +93,8 @@ async function getUserPosts(req, res) {
       .limit(30);
     res.json(posts);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -113,7 +119,8 @@ async function createPost(req, res) {
     });
     res.status(201).json(post);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -125,7 +132,8 @@ async function deletePost(req, res) {
     await post.deleteOne();
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -143,7 +151,8 @@ async function toggleLike(req, res) {
     await post.save();
     res.json({ liked: !liked, count: post.likes.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -164,7 +173,8 @@ async function addComment(req, res) {
     await post.save();
     res.json(post.comments[post.comments.length - 1]);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
@@ -180,7 +190,8 @@ async function deleteComment(req, res) {
     await post.save();
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('[Social]', e.message);
+    res.status(500).json({ error: 'Request failed' });
   }
 }
 
