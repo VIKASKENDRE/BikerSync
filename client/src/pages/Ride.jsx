@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useRideContext } from '../context/RideContext';
 import { socket } from '../services/socket';
 import MapDashboard from '../components/map/MapDashboard';
+import CrashCountdown from '../components/sos/CrashCountdown';
 
 export default function Ride() {
   const { rideId } = useParams();
@@ -64,5 +65,10 @@ export default function Ride() {
 
   if (!state.rideId) return null;
 
-  return <MapDashboard />;
+  return (
+    <>
+      <MapDashboard />
+      <CrashCountdown />
+    </>
+  );
 }

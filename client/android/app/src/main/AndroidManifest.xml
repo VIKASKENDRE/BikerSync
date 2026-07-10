@@ -67,6 +67,11 @@
     <!-- Keeps CPU and screen awake during active ride -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Crash detection: full-screen "Are you OK?" alert + vibration -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Background location foreground service -->
     <!-- FOREGROUND_SERVICE + foregroundServiceType="location" is sufficient —
          the service notification keeps the process in "foreground" state, so

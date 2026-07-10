@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react';
-import { socket } from '../../services/socket';
 import { useRideContext } from '../../context/RideContext';
-import { webrtcMesh } from '../../services/webrtcMesh';
-import { wifiDirectMesh } from '../../services/wifiDirectMesh';
-import { publishSOS } from '../../services/rtdbRide';
-import { api } from '../../services/api';
+import { sendSOS } from '../../services/sosService';
 
 export default function SOSButton() {
   const { state, dispatch } = useRideContext();
@@ -15,34 +11,10 @@ export default function SOSButton() {
     if (state.sosAlert === null && status === 'sent') setStatus('idle');
   }, [state.sosAlert]); // eslint-disable-line
 
-  const triggerSOS = () => {
+  const triggerSOS = async () => {
     if (status === 'sent') return;
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const payload = {
-          rideId:      state.rideId,
-          riderId:     state.selfRider?.riderId,
-          displayName: state.selfRider?.displayName,
-          lat:         pos.coords.latitude,
-          lng:         pos.coords.longitude,
-          battery:     state.selfRider?.battery ?? null,
-          timestamp:   Date.now(),
-        };
-        publishSOS(state.rideId, payload).catch(() => {});
-
-        if (socket.connected) {
-          socket.emit('sos:trigger', payload);
-          try { await api.triggerSOS(payload); } catch {}
-        } else if (webrtcMesh.activePeerCount > 0) {
-          webrtcMesh.broadcastSOS(payload);
-        } else if (wifiDirectMesh.peerCount > 0) {
-          wifiDirectMesh.broadcastSOS(payload);
-        }
-        dispatch({ type: 'SOS_RECEIVED', payload });
-        setStatus('sent');
-      },
-      () => {}
-    );
+    const ok = await sendSOS(state, dispatch);
+    if (ok) setStatus('sent');
   };
 
   return (
